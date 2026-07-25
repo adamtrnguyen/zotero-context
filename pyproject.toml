@@ -1,0 +1,19 @@
+[project]
+name = "zotero-context"
+version = "0.1.0"
+description = "Read-only Python API for local Zotero window state and annotations"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.optional-dependencies]
+mcp = [
+  "mcp>=1.0.0",
+]
+
+[project.scripts]
+zotero-context = "zotero_context.cli:main"
+zotero-context-mcp = "zotero_context.mcp_server:run"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
