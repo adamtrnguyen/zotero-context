@@ -261,6 +261,47 @@ class ZoteroItemStore:
         finally:
             conn.close()
 
+    def base_field_map(self, item_type: str) -> dict[str, str]:
+        """{baseFieldName: actualFieldName} for one item type. Empty when it maps nothing.
+
+        Zotero stores a handful of fields under a name that depends on the item type,
+        with a shared BASE name used to address them generically. `publicationTitle` is
+        the one that bites: on a `conferencePaper` the value lives in
+        `proceedingsTitle`, on a `bookSection` in `bookTitle`, on a `webpage` in
+        `websiteTitle` -- ten item types in the live library map that base alone
+        (measured 2026-08-13). A write addressed to the base name lands in the mapped
+        field, so reading the base name back finds nothing and a verifier comparing
+        written names against stored names calls a successful write unverified.
+
+        Read out of `baseFieldMappingsCombined` rather than hard-coded, for the reason
+        the annotation reads already follow: the mapping is the database's own data and
+        it moves with Zotero's schema version. A table this method invents would be a
+        second answer that drifts.
+        """
+        conn, _ = self._connect()
+        try:
+            rows = conn.execute(
+                """
+                SELECT base.fieldName, actual.fieldName
+                  FROM baseFieldMappingsCombined m
+                  JOIN itemTypes t ON t.itemTypeID = m.itemTypeID
+                  JOIN fields base ON base.fieldID = m.baseFieldID
+                  JOIN fields actual ON actual.fieldID = m.fieldID
+                 WHERE t.typeName = ?
+                """,
+                (item_type,),
+            ).fetchall()
+        except sqlite3.OperationalError:
+            # The table is absent. Returning {} degrades to comparing names literally,
+            # which is what this method exists to improve on -- so the caller loses the
+            # improvement and nothing else. Raising would turn a SUCCESSFUL metadata
+            # write into an exception on its verification step, which is the one outcome
+            # worse than an unhelpful verdict.
+            return {}
+        finally:
+            conn.close()
+        return {base: actual for base, actual in rows}
+
     def item_creators(self, key: str) -> tuple[dict[str, str], ...]:
         """Creators on one item, IN ORDER.
 

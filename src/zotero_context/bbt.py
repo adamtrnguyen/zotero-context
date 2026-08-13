@@ -4,7 +4,6 @@ import json
 import urllib.error
 import urllib.request
 
-
 DEFAULT_BBT_RPC_URL = "http://127.0.0.1:23119/better-bibtex/json-rpc"
 
 

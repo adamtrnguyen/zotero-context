@@ -17,10 +17,10 @@ def run() -> None:
 
 async def main() -> None:
     try:
+        import mcp.types as types
         from mcp.server import NotificationOptions, Server
         from mcp.server.models import InitializationOptions
         from mcp.server.stdio import stdio_server
-        import mcp.types as types
     except ImportError as exc:
         raise SystemExit(
             "The MCP adapter requires the optional dependency: uv sync --extra mcp"
@@ -34,7 +34,8 @@ async def main() -> None:
         return [
             types.Tool(
                 name="get_zotero_window_state",
-                description="Return current Zotero selected collection, selected items, tabs, readers, and reader positions.",
+                description="Return current Zotero selected collection, selected items, "
+                "tabs, readers, and reader positions.",
                 inputSchema={"type": "object", "properties": {}, "required": []},
             ),
             types.Tool(
@@ -87,7 +88,8 @@ async def main() -> None:
             ),
             types.Tool(
                 name="resolve_zotero_pdf",
-                description="Resolve a Better BibTeX citekey, parent item key, or PDF attachment key to Zotero parent/PDF keys.",
+                description="Resolve a Better BibTeX citekey, parent item key, or PDF "
+                "attachment key to Zotero parent/PDF keys.",
                 inputSchema={
                     "type": "object",
                     "properties": {

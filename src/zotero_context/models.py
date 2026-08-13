@@ -11,7 +11,7 @@ class ZoteroCollection:
     id: int | None = None
 
     @classmethod
-    def from_bridge(cls, data: dict[str, Any] | None) -> "ZoteroCollection | None":
+    def from_bridge(cls, data: dict[str, Any] | None) -> ZoteroCollection | None:
         if not data:
             return None
         return cls(
@@ -30,7 +30,7 @@ class ZoteroItem:
     parent_key: str | None = None
 
     @classmethod
-    def from_bridge(cls, data: dict[str, Any]) -> "ZoteroItem":
+    def from_bridge(cls, data: dict[str, Any]) -> ZoteroItem:
         return cls(
             key=str(data.get("key") or ""),
             item_type=str(data.get("itemType") or data.get("item_type") or ""),
@@ -48,7 +48,7 @@ class TabState:
     selected: bool = False
 
     @classmethod
-    def from_bridge(cls, data: dict[str, Any]) -> "TabState":
+    def from_bridge(cls, data: dict[str, Any]) -> TabState:
         return cls(
             type=str(data.get("type") or ""),
             title=str(data.get("title") or ""),
@@ -65,7 +65,7 @@ class ReaderPosition:
     cfi: str | None = None
 
     @classmethod
-    def from_bridge(cls, data: dict[str, Any] | None) -> "ReaderPosition | None":
+    def from_bridge(cls, data: dict[str, Any] | None) -> ReaderPosition | None:
         if not data:
             return None
         return cls(
@@ -87,7 +87,7 @@ class ReaderState:
     position: ReaderPosition | None = None
 
     @classmethod
-    def from_bridge(cls, data: dict[str, Any]) -> "ReaderState":
+    def from_bridge(cls, data: dict[str, Any]) -> ReaderState:
         return cls(
             tab_id=str(data.get("tabID") or data.get("tab_id") or ""),
             is_active_tab=bool(data.get("isActiveTab") or data.get("is_active_tab")),
@@ -114,7 +114,7 @@ class WindowState:
     raw: dict[str, Any]
 
     @classmethod
-    def from_bridge(cls, data: dict[str, Any]) -> "WindowState":
+    def from_bridge(cls, data: dict[str, Any]) -> WindowState:
         sections = data.get("sections") or {}
         tabs_section = sections.get("tabs") or {}
         return cls(

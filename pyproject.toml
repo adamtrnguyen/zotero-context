@@ -20,6 +20,31 @@ mcp = [
 zotero-context = "zotero_context.cli:main"
 zotero-context-mcp = "zotero_context.mcp_server:run"
 
+[dependency-groups]
+# PEP 735, not extras: `--extra mcp` is a runtime capability a consumer opts into, while
+# nobody consuming `zotero_context` wants a type checker. Matches writes/ and the
+# sibling repos.
+dev = [
+    "ruff>=0.6",
+    "ty==0.0.55",  # PINNED EXACTLY: ty is pre-1.0 (0.0.x) and its diagnostics change
+                   # between releases, so an unpinned bump turns `just lint` red with no
+                   # code change. Bump deliberately, both packages together.
+    "vulture>=2.14",
+    "codespell>=2.4",
+]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+
+[tool.ruff.lint]
+# Same rule set as writes/, calibre-core and the rest of Adam's Python: pycodestyle +
+# pyflakes, import order, bugbear, pyupgrade, complexity ceiling.
+select = ["E", "F", "I", "B", "UP", "C901"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["zotero_context"]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

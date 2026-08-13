@@ -5,7 +5,6 @@ from pathlib import Path
 
 from .models import Annotation, ZoteroSource
 
-
 DEFAULT_ZOTERO_DB = Path.home() / "Zotero" / "zotero.sqlite"
 
 ANNOTATION_TYPE = {
