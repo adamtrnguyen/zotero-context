@@ -1,0 +1,45 @@
+[project]
+name = "zotero-writes"
+version = "0.1.0"
+description = "The one gated write path for Adam's local Zotero library: liveness checked, keys resolved before sending, no-ops refused, every change journalled with its inverse."
+# Matches core's floor. The dependency runs writes -> core, so this cannot be
+# looser than what core supports.
+requires-python = ">=3.10"
+# `zotero_context` supplies the READS the gates need. Nothing else: the transport is
+# stdlib urllib, so this package adds no third-party dependency to the suite.
+dependencies = [
+    "zotero-context",
+]
+
+[tool.uv.sources]
+zotero-context = { path = "../core", editable = true }
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "ruff>=0.6",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --strict-markers --strict-config"
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+
+[tool.ruff.lint]
+# Same rule set as calibre-core and the rest of Adam's Python: pycodestyle +
+# pyflakes, import order, bugbear, pyupgrade, complexity ceiling.
+select = ["E", "F", "I", "B", "UP", "C901"]
+
+[tool.ruff.lint.isort]
+# `zotero_context` is a sibling package in this repo reached through a path
+# dependency, not a third-party distribution. Grouping it next to pytest would
+# misrepresent the layout and hide the one dependency edge that matters here:
+# writes -> core, never the reverse.
+known-first-party = ["zotero_writes", "zotero_context"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
