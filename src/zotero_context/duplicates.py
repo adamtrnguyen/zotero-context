@@ -1,0 +1,209 @@
+"""Is this thing already in Zotero? Read-only, and answered BEFORE a create.
+
+Exists because the two things that create Zotero items today disagree about the
+answer. `importers/calibre2zotero/sync.py` scans Zotero's `extra` field for
+`calibre-uuid:<uuid>`; `calibre-zotero-jump/ui.py` instead trusts a `zotero`
+identifier on the CALIBRE side. Those are different questions:
+
+  * the `extra` scan asks "does Zotero already hold this book"
+  * the Calibre identifier asks "does Calibre think it pushed this book"
+
+They diverge exactly when a push half-succeeded -- item created, identifier never
+stamped back -- and then one client re-creates what the other can already see. 769
+items in the live library carry a `calibre-uuid:` stamp, so this is not a corner.
+
+VERDICT TIERS, same three as calibre-core
+-----------------------------------------
+  block -- no judgement required: the same DOI, the same ISBN, or the same
+           calibre-uuid. These are identifiers; a match is an identity claim.
+  warn  -- plausible but needs a human: same normalised title AND same first-author
+           surname. Two editions and a preprint/published pair both look like this,
+           and both are legitimately two items.
+  ok    -- nothing matched.
+
+Everything here runs off the catalogue -- no file is opened, no network call is
+made -- so the whole check is three queries over a few thousand rows.
+
+ON THE NORMALISER
+-----------------
+`_norm_title` is deliberately small, and it is NOT the same code as
+calibre-core's `dedup_key`, which is considerably better: it handles CJK, Hangul
+Jamo decomposition, kana voicing marks, and ordinal-before-"edition" stripping,
+each because a real book in that library broke the naive version. This one cannot
+import it -- CalibreSuite and ZoteroSuite are separate repos with separate remotes,
+and a cross-suite dependency for one function is a worse trade than a small local
+copy. The consequence is real and worth stating rather than hiding: a CJK-titled
+paper will normalise less well here than the same title would in Calibre. If
+cross-library title matching ever becomes load-bearing -- which is exactly what
+calibre2zotero does -- the normaliser is the thing to extract into a shared
+package, not to reimplement a third time.
+"""
+
+from __future__ import annotations
+
+import re
+import unicodedata
+
+from .items import ZoteroItemStore
+
+
+def _norm_title(title: str) -> str:
+    """Casefold, strip accents and punctuation, collapse whitespace.
+
+    NFKD then dropping combining marks is what makes 'Hébert' match 'Hebert'. Note
+    the limitation the module docstring names: this also strips kana voicing marks,
+    which are phonemic, so 'が' and 'か' collapse. calibre-core's version does not.
+    """
+    if not title:
+        return ""
+    decomposed = unicodedata.normalize("NFKD", title)
+    stripped = "".join(c for c in decomposed if not unicodedata.combining(c))
+    return re.sub(r"\s+", " ", re.sub(r"[^\w\s]", " ", stripped)).strip().casefold()
+
+
+def _surname(creator: dict[str, str]) -> str:
+    """The surname a match should key on, normalised."""
+    raw = creator.get("lastName") or creator.get("name") or ""
+    # An organisation in single-field mode has no surname as such; key on the whole
+    # name, which is what a human comparing two records would do.
+    return _norm_title(raw.split(",")[0])
+
+
+def clean_doi(doi: str | None) -> str:
+    """Bare lowercase DOI. Accepts the URL and `doi:` forms Zotero records mix.
+
+    Zotero's DOI field holds whatever the translator put there, and translators
+    disagree: `10.1145/3592433`, `https://doi.org/10.1145/3592433`, and
+    `doi:10.1145/3592433` all appear. Comparing them raw makes the same DOI look
+    like three different ones, which turns the strongest signal available into a
+    miss.
+    """
+    if not doi:
+        return ""
+    value = doi.strip().casefold()
+    value = re.sub(r"^https?://(dx\.)?doi\.org/", "", value)
+    value = re.sub(r"^doi:\s*", "", value)
+    return value.strip()
+
+
+def clean_isbn(isbn: str | None) -> str:
+    """Digits and X only. Deliberately does NOT validate the checksum.
+
+    calibre-core runs isbnlib.canonical here, which rejects malformed lengths --
+    better, and unavailable without adding a dependency to a package that has none.
+    The consequence: a 12-digit typo can match another identical 12-digit typo. That
+    is a `block` on a garbage value, so it is worth knowing about; it needs the same
+    typo recorded twice to fire.
+    """
+    if not isbn:
+        return ""
+    return re.sub(r"[^0-9Xx]", "", isbn).upper()
+
+
+def _calibre_uuids(extra: str) -> set[str]:
+    return set(re.findall(r"calibre-uuid:\s*([0-9a-f-]{36})", extra or "", re.I))
+
+
+def check_duplicate(
+    store: ZoteroItemStore | None = None,
+    *,
+    title: str | None = None,
+    doi: str | None = None,
+    isbn: str | None = None,
+    calibre_uuid: str | None = None,
+    creators: list[dict[str, str]] | tuple[dict[str, str], ...] = (),
+) -> dict:
+    """Look for an existing item matching the one about to be created.
+
+    Returns {"verdict": "block"|"warn"|"ok", "signals": [...]}, where each signal
+    names the matched item key and says which evidence matched.
+
+    Trashed items are reported but do NOT block: something in the trash is on its
+    way out, and refusing to re-create it would leave the caller stuck behind a
+    decision someone else already made. The signal carries `trashed: true` so a
+    caller can tell the difference.
+    """
+    store = store or ZoteroItemStore()
+    conn, read_mode = store._connect()
+    try:
+        rows = conn.execute(
+            """
+            SELECT i.key,
+                   MAX(CASE WHEN f.fieldName = 'title' THEN v.value END),
+                   MAX(CASE WHEN f.fieldName = 'DOI'   THEN v.value END),
+                   MAX(CASE WHEN f.fieldName = 'ISBN'  THEN v.value END),
+                   MAX(CASE WHEN f.fieldName = 'extra' THEN v.value END),
+                   (SELECT COUNT(*) FROM deletedItems d WHERE d.itemID = i.itemID)
+              FROM items i
+              JOIN itemData dt ON dt.itemID = i.itemID
+              JOIN fields f ON f.fieldID = dt.fieldID
+              JOIN itemDataValues v ON v.valueID = dt.valueID
+             WHERE i.libraryID = ?
+               AND f.fieldName IN ('title', 'DOI', 'ISBN', 'extra')
+             GROUP BY i.itemID
+            """,
+            (store.library_id,),
+        ).fetchall()
+        # First author per item, for the title+author signal. Separate query rather
+        # than another join: folding the creators fan-out into the itemData fan-out
+        # multiplies rows, which is the mistake calibre-core documents in its own
+        # duplicate check.
+        first_authors = {
+            key: _norm_title(last or name or "")
+            for key, last, name in conn.execute(
+                """
+                SELECT i.key, c.lastName, c.firstName
+                  FROM items i
+                  JOIN itemCreators ic ON ic.itemID = i.itemID AND ic.orderIndex = 0
+                  JOIN creators c ON c.creatorID = ic.creatorID
+                 WHERE i.libraryID = ?
+                """,
+                (store.library_id,),
+            )
+        }
+    finally:
+        conn.close()
+
+    want_doi = clean_doi(doi)
+    want_isbn = clean_isbn(isbn)
+    want_uuid = (calibre_uuid or "").strip().lower()
+    want_title = _norm_title(title or "")
+    want_surname = _surname(creators[0]) if creators else ""
+
+    signals: list[dict] = []
+    for key, row_title, row_doi, row_isbn, row_extra, deleted in rows:
+        trashed = bool(deleted)
+        if want_doi and clean_doi(row_doi) == want_doi:
+            signals.append(
+                {"signal": "doi", "item_key": key, "trashed": trashed,
+                 "detail": f"DOI {want_doi} on {row_title!r}"}
+            )
+        if want_isbn and clean_isbn(row_isbn) == want_isbn:
+            signals.append(
+                {"signal": "isbn", "item_key": key, "trashed": trashed,
+                 "detail": f"ISBN {want_isbn} on {row_title!r}"}
+            )
+        if want_uuid and want_uuid in {u.lower() for u in _calibre_uuids(row_extra)}:
+            signals.append(
+                {"signal": "calibre-uuid", "item_key": key, "trashed": trashed,
+                 "detail": f"calibre-uuid {want_uuid} on {row_title!r}"}
+            )
+        if (
+            want_title
+            and _norm_title(row_title or "") == want_title
+            # Require the surname to match too, or every "Introduction" collides.
+            # An absent surname on either side makes this signal unavailable rather
+            # than automatically true.
+            and want_surname
+            and first_authors.get(key) == want_surname
+        ):
+            signals.append(
+                {"signal": "title+author", "item_key": key, "trashed": trashed,
+                 "detail": f"{row_title!r} — {want_surname}"}
+            )
+
+    live = [s for s in signals if not s["trashed"]]
+    hard = [s for s in live if s["signal"] in ("doi", "isbn", "calibre-uuid")]
+    soft = [s for s in live if s["signal"] == "title+author"]
+    verdict = "block" if hard else ("warn" if soft else "ok")
+    return {"verdict": verdict, "signals": signals, "read_mode": read_mode}
