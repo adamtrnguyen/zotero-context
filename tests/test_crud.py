@@ -360,6 +360,81 @@ def test_a_field_with_no_trace_of_the_write_is_still_unverified(
     assert out["verification"]["disagreed"] == ["date"]
 
 
+def test_a_venue_write_remapped_onto_the_types_own_field_is_verified_not_disagreed(
+    zotero, linker, cookjohn, tmp_path
+):
+    """Zotero maps a BASE field name onto the field the item type actually carries, and
+    cookjohn writes through that mapping: `publicationTitle` on a conferencePaper is
+    stored as `proceedingsTitle`. Observed live 2026-08-13 — `write_metadata` answered
+    ok, the value was in the library, and reading back the name that was WRITTEN found
+    nothing, so this reported a successful write as `disagreed` and sent the caller to
+    check Zotero by hand.
+
+    Reported as `mapped_to_type_field` rather than folded into `normalized_by_zotero`:
+    the value is intact and it is the NAME that moved, which is what a caller re-reading
+    the field later needs to know."""
+    zotero.add("ABCD2345", "A Paper", item_type="conferencePaper")
+    out = update_metadata(
+        "ABCD2345", {"publicationTitle": "NeurIPS 2026"},
+        journal_dir=str(tmp_path / "j"), **_kw(zotero, linker, cookjohn),
+    )
+    assert out["verification"]["verified"] is True
+    assert out["verification"]["mapped_to_type_field"] == {
+        "publicationTitle": "proceedingsTitle"
+    }
+    assert "disagreed" not in out["verification"]
+    # The value really is under the mapped name and NOT under the written one.
+    stored = zotero.fields_of("ABCD2345")
+    assert stored["proceedingsTitle"] == "NeurIPS 2026"
+    assert "publicationTitle" not in stored
+
+
+def test_the_remap_is_read_from_the_database_not_assumed_per_type(
+    zotero, linker, cookjohn, tmp_path
+):
+    """The same base field maps to a DIFFERENT field per item type — bookTitle on a
+    bookSection, proceedingsTitle on a conferencePaper — so a hard-coded pair would be
+    right for one type and wrong for the other nine. `baseFieldMappingsCombined` is the
+    database's own data and moves with Zotero's schema version."""
+    zotero.add("ABCD2345", "A Chapter", item_type="bookSection")
+    out = update_metadata(
+        "ABCD2345", {"publicationTitle": "A Big Handbook"},
+        journal_dir=str(tmp_path / "j"), **_kw(zotero, linker, cookjohn),
+    )
+    assert out["verification"]["mapped_to_type_field"] == {"publicationTitle": "bookTitle"}
+    assert zotero.fields_of("ABCD2345")["bookTitle"] == "A Big Handbook"
+
+
+def test_a_type_that_maps_nothing_still_compares_names_literally(
+    zotero, linker, cookjohn, tmp_path
+):
+    """A journalArticle stores `publicationTitle` under that very name. The mapping
+    lookup must not invent a rename where the type has none."""
+    zotero.add("ABCD2345", "A Paper", item_type="journalArticle")
+    out = update_metadata(
+        "ABCD2345", {"publicationTitle": "JMLR"},
+        journal_dir=str(tmp_path / "j"), **_kw(zotero, linker, cookjohn),
+    )
+    assert out["verification"]["verified"] is True
+    assert "mapped_to_type_field" not in out["verification"]
+    assert zotero.fields_of("ABCD2345")["publicationTitle"] == "JMLR"
+
+
+def test_the_remap_does_not_rescue_a_write_that_never_landed(zotero, linker, cookjohn, tmp_path):
+    """The mapping tolerance must not swallow a failed write the way strict equality must
+    not produce false alarms. A conferencePaper whose plugin applied nothing is still
+    `disagreed`, and the field is not reported as merely relocated."""
+    zotero.add("ABCD2345", "A Paper", item_type="conferencePaper")
+    out = update_metadata(
+        "ABCD2345", {"publicationTitle": "NeurIPS 2026"},
+        journal_dir=str(tmp_path / "j"),
+        store=zotero.store(), linker=linker, cookjohn=FakeCookjohn(zotero, apply=False),
+    )
+    assert out["verification"]["verified"] == "unverified"
+    assert out["verification"]["disagreed"] == ["publicationTitle"]
+    assert "mapped_to_type_field" not in out["verification"]
+
+
 def test_an_update_merges_and_leaves_other_fields_alone(zotero, linker, cookjohn, tmp_path):
     zotero.add("ABCD2345", "A Paper", fields={"date": "2019", "publisher": "ACM"})
     update_metadata(

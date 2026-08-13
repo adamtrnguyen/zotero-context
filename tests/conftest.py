@@ -48,7 +48,15 @@ PING = {
 
 COOKJOHN_INFO = {"name": "zotero-integrated-mcp", "version": "1.1.0"}
 
-TYPE_IDS = {"annotation": 1, "attachment": 3, "book": 7, "journalArticle": 22, "note": 28}
+TYPE_IDS = {
+    "annotation": 1,
+    "attachment": 3,
+    "book": 7,
+    "bookSection": 8,
+    "conferencePaper": 11,
+    "journalArticle": 22,
+    "note": 28,
+}
 
 
 class ZoteroBuilder:
@@ -236,6 +244,32 @@ class ZoteroBuilder:
         finally:
             con.close()
 
+    def stored_field_name(self, key: str, base_name: str) -> str:
+        """Where a write to `base_name` actually lands, given this item's type.
+
+        Mirrors what cookjohn does: it writes through Zotero's base-field mapping, so
+        `publicationTitle` on a conferencePaper is stored as `proceedingsTitle`. Names
+        that map to nothing come back unchanged.
+
+        Re-derived here in SQL rather than by calling
+        `ZoteroItemStore.base_field_map` -- sharing the resolver with the code under
+        test would make the fake agree with a broken resolver, which is the one thing
+        these fakes exist not to do.
+        """
+        con = sqlite3.connect(f"file:{self.path}?mode=ro", uri=True)
+        try:
+            row = con.execute(
+                "SELECT actual.fieldName FROM items i "
+                "JOIN baseFieldMappingsCombined m ON m.itemTypeID = i.itemTypeID "
+                "JOIN fields base ON base.fieldID = m.baseFieldID "
+                "JOIN fields actual ON actual.fieldID = m.fieldID "
+                "WHERE i.itemID = ? AND base.fieldName = ?",
+                (self.ids[key], base_name),
+            ).fetchone()
+            return row[0] if row else base_name
+        finally:
+            con.close()
+
     def fields_of(self, key: str) -> dict[str, str]:
         con = sqlite3.connect(f"file:{self.path}?mode=ro", uri=True)
         try:
@@ -420,7 +454,10 @@ class FakeCookjohn(CookjohnClient):
         key = arguments["itemKey"]
         if self.apply:
             for name, value in (arguments.get("fields") or {}).items():
-                self.builder.set_field(key, name, value)
+                # Through the base-field mapping, as the real plugin does. A fake that
+                # stored the name it was handed would hide the remap entirely, and the
+                # remap is what made a successful venue write report as unverified.
+                self.builder.set_field(key, self.builder.stored_field_name(key, name), value)
             if arguments.get("creators") is not None:
                 self.builder.replace_creators(key, arguments["creators"])
         return {"success": True, "itemKey": key}

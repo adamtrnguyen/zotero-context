@@ -11,13 +11,37 @@ dependencies = [
     "zotero-context",
 ]
 
+[project.optional-dependencies]
+mcp = [
+  # <2 deliberately, and the SAME pin as core. mcp 2.0.0 removed the
+  # `@server.list_tools()` decorator and `mcp.server.fastmcp`, so an unpinned
+  # `>=1.26.0` resolves 2.0.0 and the adapter dies at import with `'Server' object has
+  # no attribute 'list_tools'`. That is how core's adapter sat broken long enough never
+  # to be registered. Revisit only by porting `mcp_server.py`.
+  "mcp>=1.26.0,<2",
+]
+
+[project.scripts]
+# The adapter only. There is no `zotero-writes` CLI: a write is not something to reach
+# for by hand, and the Python API is the surface consumers import.
+zotero-writes-mcp = "zotero_writes.mcp_server:run"
+
 [tool.uv.sources]
 zotero-context = { path = "../core", editable = true }
 
 [dependency-groups]
+# PEP 735 rather than an extra. These are for developing this package, not for
+# installing it -- `--extra mcp` is a real runtime capability a consumer opts into,
+# while nobody consuming `zotero_writes` wants `import-linter`.
 dev = [
     "pytest>=8",
     "ruff>=0.6",
+    "ty==0.0.55",  # PINNED EXACTLY: ty is pre-1.0 (0.0.x) and its diagnostics change
+                   # between releases, so an unpinned bump turns `just lint` red with no
+                   # code change. Same pin as omni-rag and the other siblings.
+    "import-linter>=2.9",
+    "vulture>=2.14",
+    "codespell>=2.4",
 ]
 
 [tool.pytest.ini_options]

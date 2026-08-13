@@ -47,6 +47,8 @@ CREATE TABLE itemCreators (    itemID INT NOT NULL,    creatorID INT NOT NULL,  
 
 CREATE TABLE deletedItems (    itemID INTEGER PRIMARY KEY,    dateDeleted DEFAULT CURRENT_TIMESTAMP NOT NULL);
 
+CREATE TABLE baseFieldMappingsCombined (    itemTypeID INT,    baseFieldID INT,    fieldID INT,    PRIMARY KEY (itemTypeID, baseFieldID, fieldID));
+
 -- Seeded exactly as the live database has them: libraryID 1 is type 'user', which
 -- is the library `bootstrap.js` resolves keys against via
 -- `Zotero.Libraries.userLibraryID`. The six group libraries the real database also
@@ -55,10 +57,14 @@ CREATE TABLE deletedItems (    itemID INTEGER PRIMARY KEY,    dateDeleted DEFAUL
 INSERT INTO libraries (libraryID, type, editable, filesEditable) VALUES (1, 'user', 1, 1);
 INSERT INTO libraries (libraryID, type, editable, filesEditable) VALUES (2, 'group', 1, 1);
 
--- Real itemTypeIDs from the live database.
+-- Real itemTypeIDs from the live database. `bookSection` and `conferencePaper` are here
+-- because they are two of the ten types that map `publicationTitle` onto a field of
+-- their own -- the remap that made a successful venue write read as unverified.
 INSERT INTO itemTypes (itemTypeID, typeName) VALUES (1, 'annotation');
 INSERT INTO itemTypes (itemTypeID, typeName) VALUES (3, 'attachment');
 INSERT INTO itemTypes (itemTypeID, typeName) VALUES (7, 'book');
+INSERT INTO itemTypes (itemTypeID, typeName) VALUES (8, 'bookSection');
+INSERT INTO itemTypes (itemTypeID, typeName) VALUES (11, 'conferencePaper');
 INSERT INTO itemTypes (itemTypeID, typeName) VALUES (22, 'journalArticle');
 INSERT INTO itemTypes (itemTypeID, typeName) VALUES (28, 'note');
 
@@ -76,6 +82,24 @@ INSERT INTO fields (fieldID, fieldName) VALUES (16, 'extra');
 INSERT INTO fields (fieldID, fieldName) VALUES (23, 'publisher');
 INSERT INTO fields (fieldID, fieldName) VALUES (25, 'ISBN');
 INSERT INTO fields (fieldID, fieldName) VALUES (59, 'DOI');
+-- The base field and the two type-specific fields it maps to, plus the second mapping
+-- bookSection carries. Real fieldIDs, so the join below is the real join.
+INSERT INTO fields (fieldID, fieldName) VALUES (4, 'medium');
+INSERT INTO fields (fieldID, fieldName) VALUES (38, 'publicationTitle');
+INSERT INTO fields (fieldID, fieldName) VALUES (45, 'bookTitle');
+INSERT INTO fields (fieldID, fieldName) VALUES (57, 'proceedingsTitle');
+INSERT INTO fields (fieldID, fieldName) VALUES (63, 'format');
+
+-- baseFieldMappingsCombined rows copied VERBATIM for these two types
+-- (`SELECT itemTypeID, baseFieldID, fieldID ...` on 2026-08-13), IDs and all:
+--   8 (bookSection)      medium(4) -> format(63),  publicationTitle(38) -> bookTitle(45)
+--   11 (conferencePaper) publicationTitle(38) -> proceedingsTitle(57)
+-- Real IDs rather than invented ones for the reason the header gives: a query written
+-- against the live numbers has to work here too, and a hand-picked mapping would let a
+-- resolver that reads the wrong column pass.
+INSERT INTO baseFieldMappingsCombined (itemTypeID, baseFieldID, fieldID) VALUES (8, 4, 63);
+INSERT INTO baseFieldMappingsCombined (itemTypeID, baseFieldID, fieldID) VALUES (8, 38, 45);
+INSERT INTO baseFieldMappingsCombined (itemTypeID, baseFieldID, fieldID) VALUES (11, 38, 57);
 
 -- creatorTypes: real IDs, and 1 is 'author' which is itemCreators' column default.
 INSERT INTO creatorTypes (creatorTypeID, creatorType) VALUES (1, 'author');

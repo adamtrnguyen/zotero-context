@@ -432,6 +432,24 @@ def test_the_database_copy_takes_the_journal_with_it(zotero, linker, tmp_path):
     assert Path(out["database_backup"]["journal"]).exists()
 
 
+def test_the_database_copy_works_without_being_told_where_to_put_it(zotero, linker, monkeypatch):
+    """`copy_db=True` with no `journal_dir` — the documented way to ask for the snapshot —
+    used to raise TypeError from `os.makedirs(None)`, AFTER the manifest was written and
+    BEFORE the write was sent. Both tests above pass an explicit `journal_dir`, which is
+    precisely why it survived: every verb hands its own `journal_dir` straight through and
+    that parameter defaults to None.
+
+    Found by `ty`, not by the suite. Reachable from plain Python, and reachable through
+    the MCP adapter, which exposes `copy_db` and deliberately withholds `journal_dir`."""
+    zotero.add("ABCD2345", "A Paper")
+    out = trash_items(["ABCD2345"], copy_db=True, store=zotero.store(), linker=linker)
+    backup = Path(out["database_backup"]["database"])
+    assert backup.exists()
+    # And it landed in the redirected journal dir, not the shared one — resolving the
+    # default inside `copy_database` is what keeps a 329 MB file out of /tmp during tests.
+    assert "/tmp/zotero-write-journal" not in str(backup)
+
+
 # --------------------------------------------------------------------------
 # post-write verification — a 200 is not evidence
 # --------------------------------------------------------------------------

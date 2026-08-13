@@ -74,6 +74,44 @@ signature but visible in the output* — hidden for callers, available for debug
 Tests assert both: no verb requires a transport argument, and none leaks a port or
 plugin name into its parameter names.
 
+## The MCP adapter
+
+```bash
+uv sync --extra mcp
+zotero-writes-mcp          # stdio server, 17 tools
+```
+
+Every verb above, one tool each (`zotero_trash_items`, `zotero_set_tags`, …), plus
+`zotero_write_preflight` — which probes both plugins and optionally resolves keys
+without writing. The `zotero_` prefix is not decoration: cookjohn's own MCP registers
+`write_item`, `write_note`, `write_metadata` and `create_collection` under those bare
+names, and an agent's tool list has to be unambiguous about which surface is gated.
+
+The adapter implements no verb of its own. It is the same gates, and it exists because
+cookjohn's MCP **has no delete verb at all** — trash and restore live on `linker/`,
+which speaks plain HTTP — so removing an item meant driving `uv run python` one-liners.
+
+Three things it deliberately does not expose:
+
+- **reads** — `zotero_context` owns them and the `zotero-context` server already
+  serves them. A second answer to "what is in the library" is the failure this
+  package exists to end.
+- **`store` / `linker` / `cookjohn`** — injection seams. As tool parameters they would
+  let a caller aim the write path at an arbitrary URL.
+- **`journal_dir`** — the journal is only an audit trail if every write lands in one
+  place.
+
+`force` *is* exposed wherever a verb has it, defaulting to False in all six schemas; a
+test asserts no schema ships it defaulted to True, and another asserts every verb that
+has the gate exposes it. A `WriteBlocked` comes back as `as_dict()` — `{"ok": false,
+"code", "reason", "detail"}` — so a caller branches on `code` instead of parsing a
+traceback.
+
+`mcp` is behind the extra and imported inside `main()`, never at module level. That is
+the same pin core uses (`mcp>=1.26.0,<2` — 2.0.0 removed `@server.list_tools()`), and
+`.importlinter` forbids every other module from importing it, because `cookjohn.py` is
+stdlib-only so it can be vendored into `calibre-zotero-jump`.
+
 ## What is enforced
 
 | Gate | Refuses when | `code` |
@@ -171,13 +209,29 @@ throwaway item created for the purpose (`UUV3HWD2`, linked attachment `MAQ3PAG9`
   empty strings instead of removing the field. Both are now distinguished:
   `normalized_by_zotero` vs `disagreed`, and `fields_added` vs `fields_overwritten`
   with `undo_call: None` when no inverse is expressible.
+- **A third verification bug: Zotero also rewrites the field NAME.** cookjohn writes
+  through Zotero's base-field mapping, so `publicationTitle` on a `conferencePaper` is
+  stored as `proceedingsTitle` (`bookTitle` on a `bookSection`, `websiteTitle` on a
+  `webpage` — ten types map that base alone). `write_metadata` answered `ok`, the value
+  was in the library, and reading back the name that was *written* found nothing — so a
+  successful venue write reported `disagreed` and sent the caller to check Zotero by
+  hand. The mapping is read from the database's own `baseFieldMappingsCombined` rather
+  than hard-coded, and a relocated field now reports `mapped_to_type_field` — kept
+  separate from `normalized_by_zotero` because the value is intact and it is the *name*
+  that moved, which is what a caller re-reading the field needs to know.
+- **`copy_db=True` crashed, and `ty` found it, not the suite.** Every verb passes its own
+  `journal_dir` straight through and that parameter defaults to None, so the documented
+  way to ask for the snapshot reached `os.makedirs(None)` — after the manifest was
+  written and before the write was sent. Both existing tests passed an explicit
+  `journal_dir`, which is exactly why it survived. `copy_database` now resolves
+  `DEFAULT_JOURNAL_DIR` itself, as `write_manifest` always did.
 - The library returned to its starting state; only the throwaway remains, in the trash.
 
 ## Tests
 
 ```bash
-uv run pytest        # 128 tests
-uv run ruff check .
+just qa              # from the repo root: lint + types + layering + sprawl + tests
+uv run pytest        # 207 tests
 ```
 
 Both plugins and the database are stubbed, and the fakes *apply* their writes to the

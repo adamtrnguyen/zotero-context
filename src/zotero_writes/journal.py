@@ -89,7 +89,7 @@ def write_manifest(
     return path
 
 
-def copy_database(dest_dir: str, db_path) -> dict:
+def copy_database(dest_dir: str | None, db_path) -> dict:
     """Copy zotero.sqlite AND its rollback journal aside. ~330 MB per call.
 
     Both files or neither: DESIGN.md's sanctioned snapshot pattern is
@@ -99,7 +99,17 @@ def copy_database(dest_dir: str, db_path) -> dict:
 
     Off by default everywhere. Restoring it requires closing Zotero and discards
     every unrelated change made since it was taken.
+
+    `dest_dir=None` resolves `DEFAULT_JOURNAL_DIR` here, exactly as `write_manifest`
+    does, and for two reasons beyond symmetry. It was a real crash: every verb passes
+    its own `journal_dir` straight through, and that parameter defaults to None, so
+    `trash_items(keys, copy_db=True)` -- the documented way to ask for the snapshot --
+    reached `os.makedirs(None)` and raised TypeError AFTER the manifest was written and
+    BEFORE the write was sent. Resolving it here also means the test fixture's redirect
+    of the constant covers the database copy too; resolving it at the call site would
+    leave a 329 MB file landing in the shared directory during a test run.
     """
+    dest_dir = dest_dir or DEFAULT_JOURNAL_DIR
     os.makedirs(dest_dir, exist_ok=True)
     stamp = time.strftime("%Y%m%d-%H%M%S")
     out: dict = {"database": None, "journal": None, "bytes": 0}

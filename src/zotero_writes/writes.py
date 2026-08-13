@@ -476,37 +476,65 @@ def update_metadata(
         ),
         "versions": info,
     }
-    result["verification"] = _verify_fields(session.store, item_key, fields)
+    result["verification"] = _verify_fields(
+        session.store, item_key, fields, states[item_key].item_type
+    )
     return result
 
 
-def _verify_fields(store: ZoteroItemStore, item_key: str, written: dict[str, str]) -> dict:
-    """Re-read the fields and classify each one, tolerating Zotero's own normalisation.
+def _verify_fields(
+    store: ZoteroItemStore, item_key: str, written: dict[str, str], item_type: str = ""
+) -> dict:
+    """Re-read the fields and classify each one, tolerating Zotero's two rewrites.
 
-    Strict equality here produces FALSE alarms, which is not a hypothetical: writing
-    `date="2026"` to a real item on 2026-08-13 came back stored as `"2026-00-00 2026"`,
-    because Zotero parses the date field into its own multipart form. An equality check
-    reported that successful write as unverified and blamed the snapshot read -- an
-    error message pointing at entirely the wrong thing.
+    Strict equality here produces FALSE alarms, and neither case is hypothetical.
 
+    THE VALUE CHANGES. Writing `date="2026"` to a real item on 2026-08-13 came back
+    stored as `"2026-00-00 2026"`, because Zotero parses the date field into its own
+    multipart form. An equality check reported that successful write as unverified and
+    blamed the snapshot read -- an error message pointing at entirely the wrong thing.
     So a stored value that CONTAINS what was written counts as `normalized`, and the
-    stored form is reported so the caller can see what Zotero made of their input. Only
-    a field that came back with no trace of the write is `unverified`.
+    stored form is reported so the caller can see what Zotero made of their input.
+
+    THE FIELD NAME CHANGES. Zotero maps a BASE field name onto the field the item type
+    actually carries, and cookjohn writes through that mapping: `publicationTitle` on a
+    `conferencePaper` is stored as `proceedingsTitle`, on a `bookSection` as
+    `bookTitle`. `write_metadata` answers ok, the value is in the library, and a
+    read-back of the name that was WRITTEN finds nothing -- so this reported a
+    successful write as `disagreed` and sent the caller to check Zotero by hand
+    (observed 2026-08-13 on a conferencePaper venue write). A field found under its
+    mapped name is reported as `mapped_to_type_field`, which is deliberately NOT folded
+    into `normalized_by_zotero`: the value is intact and it is the NAME that moved, and
+    a caller re-reading the field later needs to be told which name to ask for.
+
+    `item_type=""` skips the mapping lookup and compares names literally, which is the
+    behaviour every caller had before the mapping was read.
     """
     now = store.item_fields(item_key)
+    aliases = store.base_field_map(item_type) if item_type else {}
     normalized: dict[str, str] = {}
+    mapped: dict[str, str] = {}
     missing: list[str] = []
     for key, value in written.items():
         stored = now.get(key)
+        if stored is None and key in aliases:
+            # Only when the written name resolved to nothing: a type that carries BOTH
+            # names should be judged on the one that was actually asked for.
+            stored = now.get(aliases[key])
+            if stored is not None:
+                mapped[key] = aliases[key]
         if stored == value:
             continue
         if stored and value and value in stored:
             normalized[key] = stored
         else:
+            mapped.pop(key, None)
             missing.append(key)
     verdict: dict = {"verified": True if not missing else "unverified"}
     if normalized:
         verdict["normalized_by_zotero"] = normalized
+    if mapped:
+        verdict["mapped_to_type_field"] = mapped
     if missing:
         verdict["disagreed"] = sorted(missing)
         verdict["note"] = (
