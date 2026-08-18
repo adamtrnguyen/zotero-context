@@ -89,6 +89,7 @@ class ZoteroBuilder:
         trashed: bool = False,
         parent: str | None = None,
         library_id: int = 1,
+        stored: bool = False,
         fields: dict[str, str] | None = None,
         tags: list[str] | None = None,
         creators: list[dict[str, str]] | None = None,
@@ -104,10 +105,20 @@ class ZoteroBuilder:
         )
         parent_id = self.ids.get(parent) if parent else None
         if item_type == "attachment":
+            # `stored=True` is a file Zotero COPIED into its own storage dir, whose path is
+            # `storage:<filename>` and whose folder name is the attachment key. The default here
+            # is a linked base-directory file (`attachments:`), and the prefix is not cosmetic:
+            # `pdf_attachments()` filters on `storage:` because only a stored file is guaranteed
+            # to live at `<storage>/<KEY>/`, so a linked attachment must NOT be enumerated.
             con.execute(
                 "INSERT INTO itemAttachments (itemID, parentItemID, linkMode, contentType, path) "
-                "VALUES (?,?,2,'application/pdf',?)",
-                (item_id, parent_id, f"attachments:{key}.pdf"),
+                "VALUES (?,?,?,'application/pdf',?)",
+                (
+                    item_id,
+                    parent_id,
+                    0 if stored else 2,
+                    f"storage:{key}.pdf" if stored else f"attachments:{key}.pdf",
+                ),
             )
         elif item_type == "note":
             con.execute(
