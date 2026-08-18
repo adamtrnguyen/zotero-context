@@ -2,7 +2,14 @@ from .annotations import ZoteroAnnotationStore
 from .bbt import BetterBibTeXClient
 from .bridge import ZoteroBridgeClient
 from .duplicates import check_duplicate, clean_doi, clean_isbn
-from .items import USER_LIBRARY_ID, ItemState, ItemStates, ZoteroItemStore
+from .items import (
+    USER_LIBRARY_ID,
+    ItemState,
+    ItemStates,
+    ZoteroAttachment,
+    ZoteroAttachments,
+    ZoteroItemStore,
+)
 from .models import (
     Annotation,
     ReaderContext,
@@ -27,6 +34,8 @@ __all__ = [
     "ReaderState",
     "TabState",
     "WindowState",
+    "ZoteroAttachment",
+    "ZoteroAttachments",
     "ZoteroAnnotationStore",
     "ZoteroBridgeClient",
     "ZoteroCollection",

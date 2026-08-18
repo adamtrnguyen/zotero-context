@@ -92,6 +92,36 @@ class ItemStates:
         return tuple(k for k, s in self.states.items() if s.exists and not s.trashed)
 
 
+@dataclass(frozen=True)
+class ZoteroAttachment:
+    """One stored PDF attachment, as a corpus builder needs to see it."""
+
+    attachment_key: str  # == the storage folder name == the `zotero://open-pdf` deep-link key
+    path: Path
+    title: str  # the PARENT item's title, else the file's stem
+    collection: str | None  # first collection the parent is filed under; None = filed nowhere
+
+
+@dataclass(frozen=True)
+class ZoteroAttachments:
+    """An enumeration, plus which read mode produced it.
+
+    `read_mode` travels for the same reason it does on `ItemStates`, and it matters MORE here: an
+    `immutable=1` snapshot can be missing a paper added seconds ago, so a caller comparing this
+    against its own index would see a phantom deletion. A short enumeration is a stale read, not an
+    emptied library.
+    """
+
+    items: tuple[ZoteroAttachment, ...]
+    read_mode: str
+
+    def __len__(self) -> int:
+        return len(self.items)
+
+    def __iter__(self):
+        return iter(self.items)
+
+
 class ZoteroItemStore:
     def __init__(
         self,
@@ -260,6 +290,97 @@ class ZoteroItemStore:
             }
         finally:
             conn.close()
+
+    def pdf_attachments(
+        self,
+        limit: int | None = None,
+        *,
+        storage_dir: Path | None = None,
+    ) -> ZoteroAttachments:
+        """Every stored PDF attachment in the library, with its parent's title and collection.
+
+        This is the enumeration a corpus builder needs: `(key, path, title, collection)` per PDF.
+        It lives here because ZoteroSuite's rule is that consumers do not duplicate Zotero SQL
+        (README, "Rules of the road") -- omni-rag carried its own copy of this query in a script
+        called `prototype_zotero.py` for months, which is how `omnirag papers ingest` ended up
+        existing with no enumerator behind it at all.
+
+        The PATH is resolved by globbing the storage folder, NOT by parsing `itemAttachments.path`.
+        The stored value is `storage:<filename>`, and the filename on disk can diverge from it;
+        the folder name is the attachment key and is authoritative. An attachment whose folder
+        holds no PDF is skipped rather than returned with a path that does not exist.
+
+        `title` falls back to the file's stem when the parent has none, and is **never
+        truncated** -- a truncated title silently merges distinct works under one label, which
+        is a real defect class in a consumer keying rows on a display string.
+
+        ⚠ Scoped to `library_id` like every other read here, so a group library's PDFs are not
+        enumerated into a user-library corpus.
+
+        ⚠ A paper in SEVERAL collections reports the first by NAME, and the `ORDER BY` is
+        load-bearing. A bare `LIMIT 1` returns whichever row the query plan reaches first, so the
+        answer is arbitrary and can change under a schema or plan change with no data change at
+        all -- and a consumer keying a filter on it (omnirag's `--field`) would see a paper
+        silently move between filters on re-ingest. Measured against the live library: three
+        collections present in omni-rag's index (`Cranberry Lab`, `Energy Lab`, `ENGL 1105`) are
+        no longer what the unordered pick returns for those papers. Alphabetical is arbitrary too,
+        but it is STABLE, which is the property that matters.
+
+        ⚠ Returns duplicates as-is. Zotero legitimately holds the same paper under two attachment
+        keys, and which copy to keep is the CONSUMER's policy (title, date, file size), not a read
+        layer's. Dedupe downstream.
+
+        ⚠ Excludes an attachment in the trash, but NOT one whose PARENT is trashed -- matching the
+        query this replaced, so the enumeration does not change under consumers mid-migration.
+        Tightening it to the parent is a deliberate change, with a re-ingest behind it.
+        """
+        storage = storage_dir or (self.db_path.parent / "storage")
+        conn, mode = self._connect()
+        try:
+            rows = conn.execute(
+                """
+                SELECT a.key,
+                       (SELECT v.value
+                          FROM itemData d
+                          JOIN fields f ON f.fieldID = d.fieldID
+                          JOIN itemDataValues v ON v.valueID = d.valueID
+                         WHERE d.itemID = ia.parentItemID AND f.fieldName = 'title'),
+                       (SELECT c.collectionName
+                          FROM collectionItems ci
+                          JOIN collections c ON c.collectionID = ci.collectionID
+                         WHERE ci.itemID = ia.parentItemID
+                         ORDER BY c.collectionName
+                         LIMIT 1)
+                  FROM itemAttachments ia
+                  JOIN items a ON a.itemID = ia.itemID
+                 WHERE a.libraryID = ?
+                   AND ia.contentType = 'application/pdf'
+                   AND ia.path LIKE 'storage:%'
+                   AND ia.itemID NOT IN (SELECT itemID FROM deletedItems)
+                 ORDER BY a.key
+                """,
+                (self.library_id,),
+            ).fetchall()
+        finally:
+            conn.close()
+
+        out: list[ZoteroAttachment] = []
+        for key, title, collection in rows:
+            pdfs = sorted((storage / key).glob("*.pdf"))
+            if not pdfs:
+                continue
+            name = (title or pdfs[0].stem).strip().replace("\n", " ")
+            out.append(
+                ZoteroAttachment(
+                    attachment_key=key,
+                    path=pdfs[0],
+                    title=name,
+                    collection=(collection or None),
+                )
+            )
+            if limit is not None and len(out) >= limit:
+                break
+        return ZoteroAttachments(items=tuple(out), read_mode=mode)
 
     def base_field_map(self, item_type: str) -> dict[str, str]:
         """{baseFieldName: actualFieldName} for one item type. Empty when it maps nothing.
