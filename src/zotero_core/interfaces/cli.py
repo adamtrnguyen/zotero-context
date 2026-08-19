@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -39,8 +40,8 @@ def build_parser() -> argparse.ArgumentParser:
     common.add_argument("--pretty", action="store_true")
 
     parser = argparse.ArgumentParser(
-        prog="zotero-context",
-        description="Read-only Zotero window state and annotation context",
+        prog="zotero-core",
+        description="Read-only Zotero catalogue and window state",
         parents=[common],
     )
 
@@ -57,6 +58,27 @@ def build_parser() -> argparse.ArgumentParser:
     resolve.add_argument("--pdf-key", action="store_true")
     sources = sub.add_parser("sources", parents=[common])
     sources.add_argument("--no-citekeys", action="store_true")
+
+    # Catalogue reads. Kept at PARITY with the MCP tool table on purpose: the read
+    # surface split into "what the CLI can do" and "what an agent can do" once before,
+    # and the half nobody could reach is the half that rotted.
+    item = sub.add_parser("item", parents=[common], help="Everything about one item by key")
+    item.add_argument("item_key")
+    dup = sub.add_parser("duplicate", parents=[common], help="Is this already in the library?")
+    dup.add_argument("--title")
+    dup.add_argument("--doi")
+    dup.add_argument("--isbn")
+    dup.add_argument("--calibre-uuid")
+    dup.add_argument(
+        "--author",
+        action="append",
+        default=[],
+        metavar="SURNAME",
+        help="First author surname. The title tier needs one -- title alone never warns.",
+    )
+    pdfs = sub.add_parser("pdfs", parents=[common], help="Enumerate stored PDF attachments")
+    pdfs.add_argument("--limit", type=int)
+    sub.add_parser("trash-count", parents=[common], help="How many items are in the trash")
     return parser
 
 
@@ -72,41 +94,64 @@ def add_annotation_filters(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--no-comments", action="store_true")
 
 
+def _reader(ctx: ZoteroContext, args: argparse.Namespace, *, active_only: bool) -> Any:
+    contexts = ctx.get_open_reader_context(
+        active_only=active_only,
+        include_annotations=args.include_annotations,
+        include_citekeys=not args.no_citekeys,
+        annotation_types=parse_types(args.annotation_types),
+    )
+    if not active_only:
+        return contexts
+    return contexts[0] if contexts else None
+
+
+def _resolve_pdf(ctx: ZoteroContext, args: argparse.Namespace) -> dict:
+    parent_key, attachment_key = ctx.resolve_pdf_attachment_key(
+        args.identifier, is_attachment_key=args.pdf_key
+    )
+    return {"parent_key": parent_key, "attachment_key": attachment_key}
+
+
+def _duplicate(ctx: ZoteroContext, args: argparse.Namespace) -> dict:
+    return ctx.check_duplicate(
+        title=args.title,
+        doi=args.doi,
+        isbn=args.isbn,
+        calibre_uuid=args.calibre_uuid,
+        creators=tuple({"creatorType": "author", "lastName": s} for s in args.author),
+    )
+
+
+# A TABLE, not an if-chain. The chain this replaces tripped ruff's C901 complexity
+# ceiling the moment four catalogue verbs were added -- which is the same pressure that
+# made the MCP adapter unmaintainable, and the reason it grew no tools for months.
+# Adding a verb is one entry here plus one parser above.
+_HANDLERS: dict[str, Callable[[ZoteroContext, argparse.Namespace], Any]] = {
+    "ping": lambda ctx, _a: {"ok": True, "bridge": ctx.ping()},
+    "window-state": lambda ctx, _a: ctx.get_window_state(),
+    "active-reader": lambda ctx, a: _reader(ctx, a, active_only=True),
+    "open-readers": lambda ctx, a: _reader(ctx, a, active_only=False),
+    "annotations": lambda ctx, a: ctx.get_annotations(
+        a.attachment_key,
+        types=parse_types(a.annotation_types),
+        include_text=not a.no_text,
+        include_comments=not a.no_comments,
+    ),
+    "resolve-pdf": _resolve_pdf,
+    "sources": lambda ctx, a: ctx.get_sources_with_annotations(include_citekeys=not a.no_citekeys),
+    "item": lambda ctx, a: ctx.get_item(a.item_key),
+    "duplicate": _duplicate,
+    "pdfs": lambda ctx, a: ctx.list_pdfs(limit=a.limit),
+    "trash-count": lambda ctx, _a: ctx.trash_count(),
+}
+
+
 def dispatch(ctx: ZoteroContext, args: argparse.Namespace) -> Any:
-    if args.command == "ping":
-        return {"ok": True, "bridge": ctx.ping()}
-    if args.command == "window-state":
-        return ctx.get_window_state()
-    if args.command == "active-reader":
-        contexts = ctx.get_open_reader_context(
-            active_only=True,
-            include_annotations=args.include_annotations,
-            include_citekeys=not args.no_citekeys,
-            annotation_types=parse_types(args.annotation_types),
-        )
-        return contexts[0] if contexts else None
-    if args.command == "open-readers":
-        return ctx.get_open_reader_context(
-            include_annotations=args.include_annotations,
-            include_citekeys=not args.no_citekeys,
-            annotation_types=parse_types(args.annotation_types),
-        )
-    if args.command == "annotations":
-        return ctx.get_annotations(
-            args.attachment_key,
-            types=parse_types(args.annotation_types),
-            include_text=not args.no_text,
-            include_comments=not args.no_comments,
-        )
-    if args.command == "resolve-pdf":
-        parent_key, attachment_key = ctx.resolve_pdf_attachment_key(
-            args.identifier,
-            is_attachment_key=args.pdf_key,
-        )
-        return {"parent_key": parent_key, "attachment_key": attachment_key}
-    if args.command == "sources":
-        return ctx.get_sources_with_annotations(include_citekeys=not args.no_citekeys)
-    raise ValueError(f"Unknown command: {args.command}")
+    handler = _HANDLERS.get(args.command)
+    if handler is None:
+        raise ValueError(f"Unknown command: {args.command}")
+    return handler(ctx, args)
 
 
 def parse_types(value: str) -> set[str] | None:

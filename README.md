@@ -74,10 +74,18 @@ point-in-time snapshot instead — a caller that cannot tell those apart cannot 
 whether it read the present or the recent past.
 
 ```bash
-zotero-core window-state --pretty
+zotero-core window-state --pretty          # what Zotero is showing right now
+zotero-core item NUQP6L46 --pretty         # type, fields, creators, tags, trash state
+zotero-core duplicate --title "..." --author Welling
+zotero-core pdfs --limit 5 --pretty
+zotero-core trash-count
 zotero-core annotations F6G6KC7G --pretty
 zotero-core sources --pretty
 ```
+
+The CLI and the MCP tools are held at **parity by a test** — every catalogue read is
+reachable both ways. That invariant was violated for months: `ZoteroItemStore` had seven
+public methods and *neither* surface exposed one of them.
 
 ## Write
 
@@ -102,17 +110,28 @@ Full rationale, transport split and the incident that motivated the gates:
 ## MCP
 
 ```bash
-uv run zotero-core-read-mcp     # window state, readers, annotations, PDF resolution
+uv run zotero-core-read-mcp     # 11 read tools
 uv run zotero-core-write-mcp    # 17 gated write tools; call zotero_write_preflight first
 ```
 
-Two adapters for now; they collapse into one `zotero-core-mcp --read-only` once the read
-surface is complete.
+Both adapters declare their tools in **one `TOOLS` table** from which the schema and the
+dispatch are derived, so adding a tool is one entry rather than a three-place change
+across two lists that must agree. **Undeclared arguments are refused, not dropped** — a
+misspelled `include_annotaions` used to vanish silently and hand back the default.
 
-⚠ **The read surface is incomplete and is being finished.** It has no collection reads,
-no item-metadata tools and no search — so those currently come from cookjohn's
-third-party `zotero-plugin` MCP. That server's nine **write** tools are ungated and are
-denied at the Claude Code permission layer; only its reads are used.
+Read tools: `get_zotero_window_state`, `get_zotero_active_reader`,
+`get_zotero_open_readers`, `get_zotero_annotations`, `resolve_zotero_pdf`,
+`get_zotero_sources`, `get_zotero_item`, `check_zotero_duplicate`, `list_zotero_pdfs`,
+`get_zotero_trash_count`, `ping_zotero`.
+
+Point either adapter somewhere else with `ZOTERO_CORE_DB`, `ZOTERO_CORE_BRIDGE_URL`,
+`ZOTERO_CORE_BBT_URL` — MCP used to hard-wire `~/Zotero/zotero.sqlite` while the CLI had
+`--db`, so it could not be run against a copy or a fixture.
+
+⚠ **Still missing: collection reads and library search.** Neither exists in `read/` yet,
+so both come from cookjohn's third-party `zotero-plugin` MCP. That server's nine **write**
+tools duplicate the gated ones and are denied at the Claude Code permission layer; only
+its reads are used. Closing this gap is what lets it be unregistered outright.
 
 ## QA
 
