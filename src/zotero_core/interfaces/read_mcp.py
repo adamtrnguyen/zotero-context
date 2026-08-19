@@ -21,8 +21,11 @@ CLI or MCP, so an agent could not read an item's type, fields, creators or tags,
 could not ask "is this already in the library" without attempting a create and parsing
 the refusal.
 
-Still missing, and not fixable here: collection reads and library search. Neither
-exists in `read/` yet; until they do those come from cookjohn's third-party plugin.
+Collection reads landed next (`read/collections.py`), including the inverse -- which
+collections an item is in -- that nothing answered before.
+
+Still missing: library search and fulltext. Until those exist in `read/`, they come from
+cookjohn's third-party plugin.
 """
 
 from __future__ import annotations
@@ -167,6 +170,22 @@ def ping_zotero() -> dict:
     # CLI-only until now, so an agent could not ask "is the bridge up?" -- it could only
     # infer it from the shape of a failure.
     return context().ping()
+
+
+def get_zotero_collections() -> dict:
+    return context().collection_tree()
+
+
+def get_zotero_collection_items(collection_key: str, include_trashed: bool = False) -> dict:
+    return context().collection_items(collection_key, include_trashed=include_trashed)
+
+
+def get_zotero_item_collections(item_keys: Any) -> dict:
+    return context().item_collections(list(item_keys or ()))
+
+
+def find_zotero_collections(name: str) -> dict:
+    return context().find_collections(name)
 
 
 @dataclass(frozen=True)
@@ -314,6 +333,54 @@ TOOLS: tuple[_ToolSpec, ...] = (
         name="get_zotero_trash_count",
         verb=get_zotero_trash_count,
         description="How many items are currently in the Zotero trash.",
+    ),
+    _ToolSpec(
+        name="get_zotero_collections",
+        verb=get_zotero_collections,
+        description=(
+            "The whole collection tree, nested, with breadcrumb `path` and a live "
+            "`item_count` per collection. Counts EXCLUDE trashed items, so they match "
+            "what the Zotero GUI shows. Scoped to the user library -- group libraries "
+            "are not mixed in."
+        ),
+    ),
+    _ToolSpec(
+        name="get_zotero_collection_items",
+        verb=get_zotero_collection_items,
+        description=(
+            "What is IN a collection: direct members with key, title and type. "
+            "Subcollections are separate entries -- walk get_zotero_collections for the "
+            "recursive view, which is also how the Zotero GUI behaves by default."
+        ),
+        properties={
+            "collection_key": {"type": "string", "description": "8-char collection key."},
+            "include_trashed": {"type": "boolean", "default": False},
+        },
+        required=("collection_key",),
+    ),
+    _ToolSpec(
+        name="get_zotero_item_collections",
+        verb=get_zotero_item_collections,
+        description=(
+            "The INVERSE: which collections each item is filed in. An item can be in "
+            "several, or none. Nothing else answers this -- Better BibTeX has only a "
+            "citekey-keyed version, which cannot be reached from an item key."
+        ),
+        properties={
+            "item_keys": {"type": "array", "items": {"type": "string"}},
+        },
+        required=("item_keys",),
+    ),
+    _ToolSpec(
+        name="find_zotero_collections",
+        verb=find_zotero_collections,
+        description=(
+            "Collections whose name contains this string, case-insensitively. Returns "
+            "each one's full breadcrumb path, which is what disambiguates the several "
+            "collections that share a short name."
+        ),
+        properties={"name": {"type": "string"}},
+        required=("name",),
     ),
     _ToolSpec(
         name="ping_zotero",

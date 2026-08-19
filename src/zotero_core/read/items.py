@@ -45,9 +45,8 @@ import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
 
-from .annotations import DEFAULT_ZOTERO_DB, ZoteroAnnotationError
-
-USER_LIBRARY_ID = 1
+from .annotations import DEFAULT_ZOTERO_DB
+from .connect import USER_LIBRARY_ID, open_readonly
 
 
 @dataclass(frozen=True)
@@ -463,31 +462,12 @@ class ZoteroItemStore:
         return tuple(creators)
 
     def _connect(self) -> tuple[sqlite3.Connection, str]:
-        """Open read-only, honest mode first. Returns the connection AND the mode.
+        """Delegates to `connect.open_readonly`.
 
-        The fallback order is the one `importers/calibre2zotero/sync.py` already
-        uses and DESIGN.md sanctions. What is different here is that the mode is
-        RETURNED: a caller deciding whether a write landed needs to know it was
-        told by a snapshot.
+        Kept as a method because it is the seam tests inject through, and because
+        `busy_timeout_ms` is per-store state. The logic moved out when `collections`
+        and `search` needed the same opener -- `duplicates` was already reaching
+        across for it, and a fourth caller would have entrenched a private as an
+        informal public API.
         """
-        if not self.db_path.exists():
-            raise ZoteroAnnotationError(f"Zotero database not found: {self.db_path}")
-        try:
-            conn = sqlite3.connect(f"file:{self.db_path}?mode=ro", uri=True, timeout=5.0)
-            conn.execute(f"PRAGMA busy_timeout={int(self.busy_timeout_ms)}")
-            # Touch a table: `connect` succeeds lazily, so the lock only surfaces on
-            # the first real read. Without this the fallback never fires and the
-            # caller gets "database is locked" from the middle of a query instead.
-            conn.execute("SELECT 1 FROM items LIMIT 1").fetchone()
-            return conn, "mode=ro"
-        except sqlite3.Error:
-            try:
-                conn = sqlite3.connect(
-                    f"file:{self.db_path}?mode=ro&immutable=1", uri=True, timeout=5.0
-                )
-                conn.execute("SELECT 1 FROM items LIMIT 1").fetchone()
-                return conn, "immutable=1"
-            except sqlite3.Error as exc:
-                raise ZoteroAnnotationError(
-                    f"Could not open Zotero database read-only: {exc}"
-                ) from exc
+        return open_readonly(self.db_path, busy_timeout_ms=self.busy_timeout_ms)

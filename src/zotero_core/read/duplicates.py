@@ -44,6 +44,7 @@ from __future__ import annotations
 import re
 import unicodedata
 
+from .connect import open_readonly
 from .items import ZoteroItemStore
 
 
@@ -124,7 +125,9 @@ def check_duplicate(
     caller can tell the difference.
     """
     store = store or ZoteroItemStore()
-    conn, read_mode = store._connect()
+    # Was `store._connect()` -- the package's only reach into another module's
+    # private. Same opener, now a shared one.
+    conn, read_mode = open_readonly(store.db_path, busy_timeout_ms=store.busy_timeout_ms)
     try:
         rows = conn.execute(
             """

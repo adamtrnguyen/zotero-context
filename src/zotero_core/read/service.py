@@ -6,6 +6,7 @@ from ..domain.entities import Annotation, ReaderContext, ReaderState, WindowStat
 from .annotations import DEFAULT_ZOTERO_DB, ZoteroAnnotationStore
 from .bbt import DEFAULT_BBT_RPC_URL, BetterBibTeXClient
 from .bridge import DEFAULT_BRIDGE_URL, ZoteroBridgeClient
+from .collections import ZoteroCollectionStore
 from .duplicates import check_duplicate as _check_duplicate
 from .items import ZoteroItemStore
 
@@ -27,6 +28,7 @@ class ZoteroContext:
         # from every agent-facing surface -- and the gap got filled by a third-party
         # plugin, which is exactly what this package exists to prevent.
         self.items = ZoteroItemStore(zotero_db_path)
+        self.collections = ZoteroCollectionStore(zotero_db_path)
 
     def ping(self) -> dict:
         return self.bridge.ping()
@@ -166,6 +168,48 @@ class ZoteroContext:
         """How many items are in the trash. Had ZERO call sites anywhere before now."""
         return {"trashed": self.items.trashed_count()}
 
+    def collection_tree(self) -> dict:
+        """The whole collection tree, nested, with breadcrumb paths and item counts."""
+        tree = self.collections.tree()
+        return {
+            "count": len(tree.flat()),
+            "read_mode": tree.read_mode,
+            "truncated": tree.truncated,
+            "collections": [_node_to_dict(node) for node in tree.roots],
+        }
+
+    def collection_items(self, collection_key: str, *, include_trashed: bool = False) -> dict:
+        """Direct members of one collection -- the read nothing else could answer."""
+        members = self.collections.items(collection_key, include_trashed=include_trashed)
+        return {
+            "collection_key": collection_key,
+            "count": len(members),
+            "read_mode": members.read_mode,
+            "items": [
+                {
+                    "item_key": m.item_key,
+                    "title": m.title,
+                    "item_type": m.item_type,
+                    "trashed": m.trashed,
+                }
+                for m in members.members
+            ],
+        }
+
+    def item_collections(self, item_keys: list[str]) -> dict:
+        """Which collections each item is filed in. The inverse; new capability."""
+        return {"items": self.collections.collections_of(item_keys)}
+
+    def find_collections(self, name: str) -> dict:
+        found = self.collections.find(name)
+        return {
+            "count": len(found),
+            "collections": [
+                {"key": n.key, "name": n.name, "path": n.path, "item_count": n.item_count}
+                for n in found
+            ],
+        }
+
     def get_sources_with_annotations(self, *, include_citekeys: bool = True) -> list[ZoteroSource]:
         sources = self.annotations.get_sources_with_annotations()
         if not include_citekeys:
@@ -217,3 +261,15 @@ class ZoteroContext:
 
 def _looks_like_item_key(value: str) -> bool:
     return len(value) == 8 and value.isalnum() and value.upper() == value
+
+
+def _node_to_dict(node) -> dict:
+    return {
+        "key": node.key,
+        "name": node.name,
+        "path": node.path,
+        "depth": node.depth,
+        "parent_key": node.parent_key,
+        "item_count": node.item_count,
+        "subcollections": [_node_to_dict(child) for child in node.subcollections],
+    }

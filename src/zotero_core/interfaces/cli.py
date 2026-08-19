@@ -79,6 +79,17 @@ def build_parser() -> argparse.ArgumentParser:
     pdfs = sub.add_parser("pdfs", parents=[common], help="Enumerate stored PDF attachments")
     pdfs.add_argument("--limit", type=int)
     sub.add_parser("trash-count", parents=[common], help="How many items are in the trash")
+
+    sub.add_parser("collections", parents=[common], help="The whole collection tree")
+    citems = sub.add_parser("collection-items", parents=[common], help="What is in a collection")
+    citems.add_argument("collection_key")
+    citems.add_argument("--include-trashed", action="store_true")
+    icoll = sub.add_parser(
+        "item-collections", parents=[common], help="Which collections an item is filed in"
+    )
+    icoll.add_argument("item_keys", nargs="+")
+    fcoll = sub.add_parser("find-collections", parents=[common], help="Collections by name")
+    fcoll.add_argument("name")
     return parser
 
 
@@ -144,6 +155,12 @@ _HANDLERS: dict[str, Callable[[ZoteroContext, argparse.Namespace], Any]] = {
     "duplicate": _duplicate,
     "pdfs": lambda ctx, a: ctx.list_pdfs(limit=a.limit),
     "trash-count": lambda ctx, _a: ctx.trash_count(),
+    "collections": lambda ctx, _a: ctx.collection_tree(),
+    "collection-items": lambda ctx, a: ctx.collection_items(
+        a.collection_key, include_trashed=a.include_trashed
+    ),
+    "item-collections": lambda ctx, a: ctx.item_collections(a.item_keys),
+    "find-collections": lambda ctx, a: ctx.find_collections(a.name),
 }
 
 
