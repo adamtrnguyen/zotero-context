@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+
+# uv / tooling. `.venv` and `.ruff_cache` write their own self-ignore, so they do not
+# show up as untracked -- but they are named here so a `git add -A` in a fresh clone,
+# before either tool has run, cannot pull them in.
+.venv/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Zotero data must NEVER be committed. zotero.sqlite is the live library database and
+# storage/ holds attachment PDFs -- this package READS them and has no business
+# vendoring either, but a stray copy while debugging is exactly how that happens.
+zotero.sqlite*
+storage/
+
+# os
+.DS_Store
