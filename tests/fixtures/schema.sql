@@ -114,3 +114,7 @@ CREATE TABLE fulltextItems (    itemID INTEGER PRIMARY KEY,    indexedPages INT,
 CREATE TABLE fulltextWords (    wordID INTEGER PRIMARY KEY,    word TEXT UNIQUE);
 
 CREATE TABLE fulltextItemWords (    wordID INT,    itemID INT,    PRIMARY KEY (wordID, itemID));
+
+-- Group libraries. `libraries` alone gives the id and type; the human-readable NAME
+-- lives here, which is what makes "you are looking in the wrong library" answerable.
+CREATE TABLE groups (    groupID INTEGER PRIMARY KEY,    libraryID INT NOT NULL UNIQUE,    name TEXT NOT NULL,    description TEXT NOT NULL DEFAULT '',    version INT NOT NULL DEFAULT 0);

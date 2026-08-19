@@ -80,22 +80,28 @@ def build_parser() -> argparse.ArgumentParser:
     pdfs.add_argument("--limit", type=int)
     sub.add_parser("trash-count", parents=[common], help="How many items are in the trash")
 
-    sub.add_parser("collections", parents=[common], help="The whole collection tree")
+    sub.add_parser("libraries", parents=[common], help="Every library, with item counts")
+    colls = sub.add_parser("collections", parents=[common], help="The whole collection tree")
+    colls.add_argument("--library-id", type=int)
     citems = sub.add_parser("collection-items", parents=[common], help="What is in a collection")
     citems.add_argument("collection_key")
     citems.add_argument("--include-trashed", action="store_true")
+    citems.add_argument("--library-id", type=int)
     icoll = sub.add_parser(
         "item-collections", parents=[common], help="Which collections an item is filed in"
     )
     icoll.add_argument("item_keys", nargs="+")
+    icoll.add_argument("--library-id", type=int)
     fcoll = sub.add_parser("find-collections", parents=[common], help="Collections by name")
     fcoll.add_argument("name")
+    fcoll.add_argument("--library-id", type=int)
 
     search = sub.add_parser("search", parents=[common], help="Fuzzy search title/creator/tag/DOI")
     search.add_argument("query")
     search.add_argument("--exact", action="store_true", help="Substring instead of fuzzy")
     search.add_argument("--limit", type=int, default=25)
     search.add_argument("--type", dest="item_type")
+    search.add_argument("--library-id", type=int)
     sann = sub.add_parser("search-annotations", parents=[common], help="Search highlights")
     sann.add_argument("query", nargs="?", default="")
     sann.add_argument("--color")
@@ -172,14 +178,18 @@ _HANDLERS: dict[str, Callable[[ZoteroContext, argparse.Namespace], Any]] = {
     "duplicate": _duplicate,
     "pdfs": lambda ctx, a: ctx.list_pdfs(limit=a.limit),
     "trash-count": lambda ctx, _a: ctx.trash_count(),
-    "collections": lambda ctx, _a: ctx.collection_tree(),
+    "libraries": lambda ctx, _a: ctx.list_libraries(),
+    "collections": lambda ctx, a: ctx.collection_tree(library_id=a.library_id),
     "collection-items": lambda ctx, a: ctx.collection_items(
-        a.collection_key, include_trashed=a.include_trashed
+        a.collection_key, include_trashed=a.include_trashed, library_id=a.library_id
     ),
-    "item-collections": lambda ctx, a: ctx.item_collections(a.item_keys),
-    "find-collections": lambda ctx, a: ctx.find_collections(a.name),
+    "item-collections": lambda ctx, a: ctx.item_collections(
+        a.item_keys, library_id=a.library_id
+    ),
+    "find-collections": lambda ctx, a: ctx.find_collections(a.name, library_id=a.library_id),
     "search": lambda ctx, a: ctx.search_items(
-        a.query, fuzzy=not a.exact, limit=a.limit, item_type=a.item_type
+        a.query, fuzzy=not a.exact, limit=a.limit, item_type=a.item_type,
+        library_id=a.library_id,
     ),
     "search-annotations": lambda ctx, a: ctx.search_annotations(
         a.query,

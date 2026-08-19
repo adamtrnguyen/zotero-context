@@ -173,20 +173,28 @@ def ping_zotero() -> dict:
     return context().ping()
 
 
-def get_zotero_collections() -> dict:
-    return context().collection_tree()
+def list_zotero_libraries() -> dict:
+    return context().list_libraries()
 
 
-def get_zotero_collection_items(collection_key: str, include_trashed: bool = False) -> dict:
-    return context().collection_items(collection_key, include_trashed=include_trashed)
+def get_zotero_collections(library_id: int | None = None) -> dict:
+    return context().collection_tree(library_id=library_id)
 
 
-def get_zotero_item_collections(item_keys: Any) -> dict:
-    return context().item_collections(list(item_keys or ()))
+def get_zotero_collection_items(
+    collection_key: str, include_trashed: bool = False, library_id: int | None = None
+) -> dict:
+    return context().collection_items(
+        collection_key, include_trashed=include_trashed, library_id=library_id
+    )
 
 
-def find_zotero_collections(name: str) -> dict:
-    return context().find_collections(name)
+def get_zotero_item_collections(item_keys: Any, library_id: int | None = None) -> dict:
+    return context().item_collections(list(item_keys or ()), library_id=library_id)
+
+
+def find_zotero_collections(name: str, library_id: int | None = None) -> dict:
+    return context().find_collections(name, library_id=library_id)
 
 
 def search_zotero_items(
@@ -194,8 +202,11 @@ def search_zotero_items(
     fuzzy: bool = True,
     limit: int = 25,
     item_type: str | None = None,
+    library_id: int | None = None,
 ) -> dict:
-    return context().search_items(query, fuzzy=fuzzy, limit=limit, item_type=item_type)
+    return context().search_items(
+        query, fuzzy=fuzzy, limit=limit, item_type=item_type, library_id=library_id
+    )
 
 
 def search_zotero_annotations(
@@ -243,6 +254,11 @@ _ANNOTATION_TYPES_PROP = {
     "type": "array",
     "items": {"type": "string", "enum": list(ANNOTATION_TYPE_NAMES)},
     "description": "Optional filter. Omit for all types.",
+}
+_LIBRARY_PROP = {
+    "type": "integer",
+    "description": "Defaults to the USER library. Group libraries have their own ids -- "
+    "call list_zotero_libraries to see them.",
 }
 _CITEKEYS_PROP = {
     "type": "boolean",
@@ -370,8 +386,9 @@ TOOLS: tuple[_ToolSpec, ...] = (
             "The whole collection tree, nested, with breadcrumb `path` and a live "
             "`item_count` per collection. Counts EXCLUDE trashed items, so they match "
             "what the Zotero GUI shows. Scoped to the user library -- group libraries "
-            "are not mixed in."
+            "are not mixed in -- pass library_id for a group."
         ),
+        properties={"library_id": _LIBRARY_PROP},
     ),
     _ToolSpec(
         name="get_zotero_collection_items",
@@ -384,6 +401,7 @@ TOOLS: tuple[_ToolSpec, ...] = (
         properties={
             "collection_key": {"type": "string", "description": "8-char collection key."},
             "include_trashed": {"type": "boolean", "default": False},
+            "library_id": _LIBRARY_PROP,
         },
         required=("collection_key",),
     ),
@@ -397,6 +415,7 @@ TOOLS: tuple[_ToolSpec, ...] = (
         ),
         properties={
             "item_keys": {"type": "array", "items": {"type": "string"}},
+            "library_id": _LIBRARY_PROP,
         },
         required=("item_keys",),
     ),
@@ -408,7 +427,7 @@ TOOLS: tuple[_ToolSpec, ...] = (
             "each one's full breadcrumb path, which is what disambiguates the several "
             "collections that share a short name."
         ),
-        properties={"name": {"type": "string"}},
+        properties={"name": {"type": "string"}, "library_id": _LIBRARY_PROP},
         required=("name",),
     ),
     _ToolSpec(
@@ -429,6 +448,7 @@ TOOLS: tuple[_ToolSpec, ...] = (
                 "type": "string",
                 "description": "Restrict to one Zotero type, e.g. 'book'.",
             },
+            "library_id": _LIBRARY_PROP,
         },
         required=("query",),
     ),
@@ -476,6 +496,16 @@ TOOLS: tuple[_ToolSpec, ...] = (
             "max_chars": {"type": "integer", "default": 20000},
         },
         required=("attachment_key",),
+    ),
+    _ToolSpec(
+        name="list_zotero_libraries",
+        verb=list_zotero_libraries,
+        description=(
+            "Every Zotero library with a live item count: the user's, plus any groups. "
+            "Every other read here is scoped to ONE library and defaults to the user's, "
+            "so this is how you tell 'you have nothing' from 'you are looking in the "
+            "wrong library'."
+        ),
     ),
     _ToolSpec(
         name="ping_zotero",

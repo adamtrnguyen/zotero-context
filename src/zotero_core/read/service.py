@@ -9,6 +9,7 @@ from .bridge import DEFAULT_BRIDGE_URL, ZoteroBridgeClient
 from .collections import ZoteroCollectionStore
 from .duplicates import check_duplicate as _check_duplicate
 from .items import ZoteroItemStore
+from .libraries import list_libraries
 from .search import ZoteroSearchStore
 
 
@@ -31,6 +32,46 @@ class ZoteroContext:
         self.items = ZoteroItemStore(zotero_db_path)
         self.collections = ZoteroCollectionStore(zotero_db_path)
         self.search = ZoteroSearchStore(zotero_db_path)
+        self._db_path = zotero_db_path
+
+    def _collections_for(self, library_id: int | None) -> ZoteroCollectionStore:
+        """The default store, or a fresh one aimed at another library.
+
+        Constructing one is cheap -- it holds paths and an int, opening nothing -- so
+        this stays a per-call choice rather than server state.
+        """
+        if library_id is None or library_id == self.collections.library_id:
+            return self.collections
+        return ZoteroCollectionStore(self._db_path, library_id=library_id)
+
+    def _search_for(self, library_id: int | None) -> ZoteroSearchStore:
+        if library_id is None or library_id == self.search.library_id:
+            return self.search
+        return ZoteroSearchStore(self._db_path, library_id=library_id)
+
+    def list_libraries(self) -> dict:
+        """Every library with a live item count -- the user's, plus any groups.
+
+        Every other read here is scoped to ONE library and defaults to the user's. That
+        default is right and it is also invisible: without this, a caller cannot tell
+        "you have nothing" from "you are looking in the wrong library".
+        """
+        libraries, read_mode = list_libraries(self._db_path)
+        return {
+            "count": len(libraries),
+            "read_mode": read_mode,
+            "libraries": [
+                {
+                    "library_id": lib.library_id,
+                    "type": lib.library_type,
+                    "name": lib.name,
+                    "editable": lib.editable,
+                    "item_count": lib.item_count,
+                    "collection_count": lib.collection_count,
+                }
+                for lib in libraries
+            ],
+        }
 
     def ping(self) -> dict:
         return self.bridge.ping()
@@ -170,9 +211,9 @@ class ZoteroContext:
         """How many items are in the trash. Had ZERO call sites anywhere before now."""
         return {"trashed": self.items.trashed_count()}
 
-    def collection_tree(self) -> dict:
+    def collection_tree(self, *, library_id: int | None = None) -> dict:
         """The whole collection tree, nested, with breadcrumb paths and item counts."""
-        tree = self.collections.tree()
+        tree = self._collections_for(library_id).tree()
         return {
             "count": len(tree.flat()),
             "read_mode": tree.read_mode,
@@ -180,9 +221,14 @@ class ZoteroContext:
             "collections": [_node_to_dict(node) for node in tree.roots],
         }
 
-    def collection_items(self, collection_key: str, *, include_trashed: bool = False) -> dict:
+    def collection_items(
+        self, collection_key: str, *, include_trashed: bool = False,
+        library_id: int | None = None,
+    ) -> dict:
         """Direct members of one collection -- the read nothing else could answer."""
-        members = self.collections.items(collection_key, include_trashed=include_trashed)
+        members = self._collections_for(library_id).items(
+            collection_key, include_trashed=include_trashed
+        )
         return {
             "collection_key": collection_key,
             "count": len(members),
@@ -198,12 +244,12 @@ class ZoteroContext:
             ],
         }
 
-    def item_collections(self, item_keys: list[str]) -> dict:
+    def item_collections(self, item_keys: list[str], *, library_id: int | None = None) -> dict:
         """Which collections each item is filed in. The inverse; new capability."""
-        return {"items": self.collections.collections_of(item_keys)}
+        return {"items": self._collections_for(library_id).collections_of(item_keys)}
 
-    def find_collections(self, name: str) -> dict:
-        found = self.collections.find(name)
+    def find_collections(self, name: str, *, library_id: int | None = None) -> dict:
+        found = self._collections_for(library_id).find(name)
         return {
             "count": len(found),
             "collections": [
@@ -219,8 +265,9 @@ class ZoteroContext:
         fuzzy: bool = True,
         limit: int = 25,
         item_type: str | None = None,
+        library_id: int | None = None,
     ) -> dict:
-        hits, read_mode = self.search.items(
+        hits, read_mode = self._search_for(library_id).items(
             query, fuzzy=fuzzy, limit=limit, item_type=item_type
         )
         return {

@@ -91,6 +91,7 @@ def test_the_cli_and_the_mcp_surface_expose_the_same_catalogue_reads():
         "sources": "get_zotero_sources",
         "active-reader": "get_zotero_active_reader",
         "open-readers": "get_zotero_open_readers",
+        "libraries": "list_zotero_libraries",
         "collections": "get_zotero_collections",
         "collection-items": "get_zotero_collection_items",
         "item-collections": "get_zotero_item_collections",
