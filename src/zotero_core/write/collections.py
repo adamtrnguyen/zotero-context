@@ -400,3 +400,153 @@ def remove_items_from_collection(
         "undo_call": f"add_items_to_collection({collection_key!r}, {keys!r})",
         "versions": info,
     }
+
+
+def move_items_between_collections(
+    from_collection_key: str,
+    to_collection_key: str,
+    item_keys,
+    *,
+    force: bool = False,
+    journal_dir: str | None = None,
+    linker=None,
+    cookjohn=None,
+    store=None,
+) -> dict:
+    """Move items from one collection to another. ONE verb, ONE manifest, WITH ROLLBACK.
+
+    WHY THIS EXISTS
+    ---------------
+    There was no move. A caller did `add_items_to_collection` then
+    `remove_items_from_collection` -- two calls, each with its own gates, only the
+    second journalled, and NO rollback. If the remove failed the items were left in
+    BOTH collections, silently, and the caller had a success envelope from the add to
+    reassure them. (That is not hypothetical: this document's own author left an item in
+    two collections that way while testing the surface.)
+
+    WHAT MAKES IT SAFE
+    ------------------
+    Order is deliberate: ADD first, then remove. The intermediate state is "in both",
+    which is recoverable and visible, rather than "in neither", which looks like the
+    items vanished. If the remove fails, the add is undone and the library is exactly as
+    it started -- reported as `rolled_back`, which is a DIFFERENT code from
+    `partial_apply` because the two need different responses: rolled-back means try
+    again, partial means go and look.
+
+    Membership is checked BEFORE moving. Moving an item that is not in the source
+    collection is a silent no-op through the two-call route -- the add succeeds, the
+    remove removes nothing, and the result claims success. Here it refuses, unless
+    `force`, in which case it files them into the target and says which were not in the
+    source.
+    """
+    from ..read.collections import ZoteroCollectionStore
+    from .verbs import check_keys, require_items
+
+    linker, cookjohn, store = _session(linker, cookjohn, store)
+    _check_collection_key(from_collection_key)
+    _check_collection_key(to_collection_key)
+    if from_collection_key == to_collection_key:
+        raise WriteBlocked(
+            Reason.NOTHING_TO_DO,
+            "source and target are the same collection — refusing a no-op move",
+            {"collection_key": from_collection_key},
+        )
+    keys = check_keys(item_keys)
+    info = require_zotero(needs=("cookjohn",), linker=linker, cookjohn=cookjohn)
+    require_items(store, keys)
+    _find_collection(cookjohn, from_collection_key)
+    _find_collection(cookjohn, to_collection_key)
+
+    reader = ZoteroCollectionStore(store.db_path, busy_timeout_ms=store.busy_timeout_ms)
+    before = {m.item_key for m in reader.items(from_collection_key, include_trashed=True).members}
+    absent = [key for key in keys if key not in before]
+    if absent and not force:
+        raise WriteBlocked(
+            Reason.NOTHING_TO_DO,
+            f"{len(absent)} of {len(keys)} item(s) are not in the source collection — "
+            "moving them would only file them into the target",
+            {"not_in_source": absent, "source_holds": sorted(before)},
+        )
+
+    manifest = write_manifest(
+        "move_items_between_collections",
+        before={
+            "from_collection_key": from_collection_key,
+            "to_collection_key": to_collection_key,
+            "item_keys": keys,
+            "source_members_before": sorted(before),
+        },
+        inverse=(
+            f"move_items_between_collections({to_collection_key!r}, "
+            f"{from_collection_key!r}, {keys!r})"
+        ),
+        journal_dir=journal_dir,
+    )
+
+    added = cookjohn.call(
+        "add_items_to_collection", {"collectionKey": to_collection_key, "itemKeys": keys}
+    )
+    try:
+        removed = cookjohn.call(
+            "remove_items_from_collection",
+            {"collectionKey": from_collection_key, "itemKeys": keys},
+        )
+    except Exception as exc:
+        # Undo the add so the library is where it started. If the undo ALSO fails the
+        # caller must be told loudly -- that is the one path here that leaves a state
+        # nobody asked for.
+        try:
+            cookjohn.call(
+                "remove_items_from_collection",
+                {"collectionKey": to_collection_key, "itemKeys": keys},
+            )
+        except Exception as undo_exc:
+            raise WriteBlocked(
+                Reason.PARTIAL_APPLY,
+                "the remove failed AND the rollback failed — items are in both "
+                "collections; undo with the manifest",
+                {
+                    "error": str(exc),
+                    "rollback_error": str(undo_exc),
+                    "undo_manifest": manifest,
+                },
+            ) from exc
+        raise WriteBlocked(
+            Reason.ROLLED_BACK,
+            f"could not remove from the source collection: {exc} — the add was undone, "
+            "nothing changed",
+            {"error": str(exc), "undo_manifest": manifest},
+        ) from exc
+
+    # Re-read BOTH sides. The two-call route verified nothing at all.
+    after_source = {
+        m.item_key for m in reader.items(from_collection_key, include_trashed=True).members
+    }
+    after_target = {
+        m.item_key for m in reader.items(to_collection_key, include_trashed=True).members
+    }
+    still_in_source = sorted(set(keys) & after_source)
+    missing_from_target = sorted(set(keys) - after_target)
+    verified = not still_in_source and not missing_from_target
+
+    return {
+        "ok": True,
+        "op": "move_items_between_collections",
+        "transport": "cookjohn",
+        "from_collection_key": from_collection_key,
+        "to_collection_key": to_collection_key,
+        "item_keys": keys,
+        "not_in_source": absent,
+        "cookjohn": {"added": added, "removed": removed},
+        "undo_manifest": manifest,
+        "undo_call": (
+            f"move_items_between_collections({to_collection_key!r}, "
+            f"{from_collection_key!r}, {keys!r})"
+        ),
+        "verification": {
+            "verified": verified,
+            "still_in_source": still_in_source,
+            "missing_from_target": missing_from_target,
+        },
+        "versions": info,
+    }

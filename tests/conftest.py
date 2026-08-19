@@ -321,6 +321,17 @@ class ZoteroBuilder:
         con.commit()
         con.close()
 
+    def remove_from_collection(self, key: str, collection_key: str) -> None:
+        con = sqlite3.connect(self.path)
+        try:
+            con.execute(
+                "DELETE FROM collectionItems WHERE itemID = ? AND collectionID = ?",
+                (self.ids[key], self.collections[collection_key]),
+            )
+            con.commit()
+        finally:
+            con.close()
+
     def collection_members(self, collection_key: str) -> list[str]:
         con = sqlite3.connect(f"file:{self.path}?mode=ro", uri=True)
         try:
@@ -587,6 +598,14 @@ class FakeCookjohn(CookjohnClient):
         return {"success": True, "added": len(arguments["itemKeys"])}
 
     def _remove_items_from_collection(self, arguments: dict):
+        # ⚠ This used to return success and apply NOTHING, while its `add` counterpart
+        # applied for real. Nothing caught the asymmetry because no test verified a
+        # removal against the database -- they asserted on the reply envelope, which the
+        # fake was writing by hand. `move_items_between_collections` re-reads both
+        # collections afterwards, and that is what surfaced it.
+        if self.apply:
+            for item_key in arguments["itemKeys"]:
+                self.builder.remove_from_collection(item_key, arguments["collectionKey"])
         return {"success": True, "removed": len(arguments["itemKeys"])}
 
 

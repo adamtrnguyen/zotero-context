@@ -43,6 +43,10 @@ class Reason:
     COOKJOHN_RETURNED_NO_KEY = "cookjohn_returned_no_key"
     PARTIAL_APPLY = "partial_apply"
     VERIFICATION_FAILED = "verification_failed"
+    # a two-step verb whose second step failed and whose first step was undone.
+    # Distinct from PARTIAL_APPLY on purpose: partial means the library is in a state
+    # nobody asked for, rolled-back means it is exactly as it started.
+    ROLLED_BACK = "rolled_back"
 
 
 ALL_REASONS = frozenset(

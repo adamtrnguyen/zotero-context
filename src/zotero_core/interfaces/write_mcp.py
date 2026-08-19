@@ -77,6 +77,7 @@ from ..write.collections import (
     add_items_to_collection,
     create_collection,
     delete_collection,
+    move_items_between_collections,
     remove_items_from_collection,
     update_collection,
 )
@@ -445,6 +446,32 @@ TOOLS: tuple[_ToolSpec, ...] = (
         ),
         properties={"collection_key": {"type": "string"}, "item_keys": _ITEM_KEYS},
         required=("collection_key", "item_keys"),
+    ),
+    _ToolSpec(
+        name="zotero_move_items_between_collections",
+        verb=move_items_between_collections,
+        description=(
+            "MOVE items from one collection to another: one call, one journal entry, "
+            "and a rollback if the second half fails. Prefer this over calling "
+            "zotero_add_items_to_collection then zotero_remove_items_from_collection -- "
+            "that route journals only the removal and has no rollback, so a failure "
+            "between them leaves the items in BOTH collections and still returns a "
+            "success envelope for the add. Refuses when the items are not in the source "
+            "collection (through the two-call route that is a silent no-op that reports "
+            "success); force=True files them into the target anyway and names them in "
+            "`not_in_source`. Re-reads BOTH collections afterwards."
+        ),
+        properties={
+            "from_collection_key": {"type": "string"},
+            "to_collection_key": {"type": "string"},
+            "item_keys": {
+                "description": "Zotero item keys (8 uppercase alphanumerics).",
+                "items": {"type": "string"},
+                "type": "array",
+            },
+            "force": _FORCE,
+        },
+        required=("from_collection_key", "to_collection_key", "item_keys"),
     ),
     # ---------------- DELETE ----------------
     _ToolSpec(

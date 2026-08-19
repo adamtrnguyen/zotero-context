@@ -88,14 +88,25 @@ def score_tokens(query_tokens: list[str], candidate_normalized: str) -> float:
     joined = " ".join(query_tokens)
     if joined == candidate_normalized:
         return 1.0
-    if joined in candidate_normalized:
-        # A clean substring is a strong signal, but not perfect: "learning" is inside
-        # "machine learning" and must not outrank the exact title.
-        return 0.97
 
     candidate_tokens = candidate_normalized.split()
     if not candidate_tokens:
         return 0.0
+
+    # A phrase match is a strong signal, but not perfect: "learning" is inside "machine
+    # learning" and must not outrank the exact title.
+    #
+    # ⚠ CHECKED ON TOKENS, not characters. A plain `joined in candidate_normalized` also
+    # matches ACROSS WORD BOUNDARIES, and that is not theoretical: searching this library
+    # for "ZZ Test" scored 0.97 against "...Static Analysis and Fuzz Testing", because
+    # "zz test" really is a substring of "fuzz testing". Found by an end-to-end run, not
+    # by review -- the character form looks obviously correct until you see it hit.
+    window = len(query_tokens)
+    if any(
+        candidate_tokens[i : i + window] == query_tokens
+        for i in range(len(candidate_tokens) - window + 1)
+    ):
+        return 0.97
 
     matcher = difflib.SequenceMatcher(autojunk=False)
     total = sum(_best_token_match(matcher, token, candidate_tokens) for token in query_tokens)

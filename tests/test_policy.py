@@ -114,6 +114,25 @@ def test_unrelated_titles_stay_below_the_threshold(unrelated):
     assert fuzzy_score("Langevan Dynmaics", unrelated) < DEFAULT_FUZZY_THRESHOLD
 
 
+def test_a_phrase_shortcut_does_not_fire_across_word_boundaries():
+    """REGRESSION. Found by an end-to-end run against the live library, not by review.
+
+    The shortcut was a plain `" ".join(query) in candidate`, which is character-level and
+    therefore matches across word boundaries: searching for "ZZ Test" scored 0.97 against
+    "...Static Analysis and Fuzz Testing", because "zz test" really is a substring of
+    "fuzz testing". It looks obviously correct until you watch it hit.
+    """
+    haystack = "Static Analysis and Fuzz Testing"
+    assert fuzzy_score("ZZ Test", haystack) < DEFAULT_FUZZY_THRESHOLD
+    # ...while the phrase that is genuinely there still shortcuts
+    assert fuzzy_score("fuzz testing", haystack) > 0.9
+
+
+def test_the_phrase_shortcut_still_fires_on_a_real_run_of_words():
+    assert fuzzy_score("stochastic gradient", TARGET) > 0.9
+    assert fuzzy_score("gradient langevin", TARGET) > 0.9
+
+
 def test_word_order_does_not_matter():
     assert fuzzy_score("Dynamics Langevin", "Langevin Dynamics") == 1.0
 

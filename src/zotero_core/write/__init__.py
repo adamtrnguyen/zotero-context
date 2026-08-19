@@ -25,7 +25,8 @@ for debugging, never in a signature.
     read        NOT HERE -- `zotero_core.read` owns reads
     update      update_metadata, replace_creators, add_tags, remove_tags, set_tags,
                 write_note(action="update"|"append"), update_collection,
-                add_items_to_collection, remove_items_from_collection
+                add_items_to_collection, remove_items_from_collection,
+                move_items_between_collections
     delete      trash_items / restore_items, delete_collection
 
 A LAYER NOW, NOT A PACKAGE (merged 2026-08-19)
@@ -69,6 +70,7 @@ from .collections import (
     add_items_to_collection,
     create_collection,
     delete_collection,
+    move_items_between_collections,
     remove_items_from_collection,
     update_collection,
 )
@@ -107,6 +109,7 @@ __all__ = [  # noqa: RUF022
     "update_metadata", "add_tags", "remove_tags",
     "set_tags", "replace_creators",
     "update_collection", "add_items_to_collection", "remove_items_from_collection",
+    "move_items_between_collections",
     # DELETE -- trash is recoverable and restore ships alongside it. No hard erase.
     "trash_items", "restore_items", "delete_collection",
     # gates, exposed so a caller can pre-flight without writing
