@@ -28,6 +28,7 @@ do: the gate exists because a plugin can report success without having done anyt
 
 from __future__ import annotations
 
+import re
 import sqlite3
 from pathlib import Path
 
@@ -357,6 +358,43 @@ class ZoteroBuilder:
             )
         finally:
             con.close()
+
+    def index_fulltext(self, attachment_key: str, text: str) -> None:
+        """Index `text` for an attachment the way Zotero does: word index + cache file.
+
+        BOTH halves, because `read/search.py` needs both and they fail differently. Only
+        the index -> the narrowing stage finds a candidate and the phrase stage finds no
+        file, so the hit silently vanishes. Only the cache -> the narrowing stage never
+        proposes the document at all.
+        """
+        item_id = self.ids[attachment_key]
+        con = sqlite3.connect(self.path)
+        try:
+            con.execute(
+                "INSERT OR REPLACE INTO fulltextItems (itemID, indexedChars, totalChars)"
+                " VALUES (?, ?, ?)",
+                (item_id, len(text), len(text)),
+            )
+            for word in {w.lower() for w in re.findall(r"\w+", text)}:
+                row = con.execute(
+                    "SELECT wordID FROM fulltextWords WHERE word = ?", (word,)
+                ).fetchone()
+                if row is None:
+                    cur = con.execute("INSERT INTO fulltextWords (word) VALUES (?)", (word,))
+                    word_id = cur.lastrowid
+                else:
+                    word_id = row[0]
+                con.execute(
+                    "INSERT OR IGNORE INTO fulltextItemWords (wordID, itemID) VALUES (?, ?)",
+                    (word_id, item_id),
+                )
+            con.commit()
+        finally:
+            con.close()
+
+        cache = self.path.parent / "storage" / attachment_key / ".zotero-ft-cache"
+        cache.parent.mkdir(parents=True, exist_ok=True)
+        cache.write_text(text)
 
     def store(self) -> ZoteroItemStore:
         return ZoteroItemStore(self.path)

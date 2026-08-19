@@ -95,6 +95,10 @@ def test_the_cli_and_the_mcp_surface_expose_the_same_catalogue_reads():
         "collection-items": "get_zotero_collection_items",
         "item-collections": "get_zotero_item_collections",
         "find-collections": "find_zotero_collections",
+        "search": "search_zotero_items",
+        "search-annotations": "search_zotero_annotations",
+        "search-fulltext": "search_zotero_fulltext",
+        "attachment-text": "get_zotero_attachment_text",
     }
     commands = _subcommands()
     tool_names = {spec.name for spec in read_mcp.TOOLS}

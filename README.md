@@ -119,21 +119,29 @@ dispatch are derived, so adding a tool is one entry rather than a three-place ch
 across two lists that must agree. **Undeclared arguments are refused, not dropped** — a
 misspelled `include_annotaions` used to vanish silently and hand back the default.
 
-Read tools (15): `get_zotero_window_state`, `get_zotero_active_reader`,
+Read tools (19): `get_zotero_window_state`, `get_zotero_active_reader`,
 `get_zotero_open_readers`, `get_zotero_annotations`, `resolve_zotero_pdf`,
 `get_zotero_sources`, `get_zotero_item`, `check_zotero_duplicate`, `list_zotero_pdfs`,
 `get_zotero_trash_count`, `ping_zotero`, `get_zotero_collections`,
 `get_zotero_collection_items`, `get_zotero_item_collections`,
-`find_zotero_collections`.
+`find_zotero_collections`, `search_zotero_items`, `search_zotero_annotations`,
+`search_zotero_fulltext`, `get_zotero_attachment_text`.
 
 Point either adapter somewhere else with `ZOTERO_CORE_DB`, `ZOTERO_CORE_BRIDGE_URL`,
 `ZOTERO_CORE_BBT_URL` — MCP used to hard-wire `~/Zotero/zotero.sqlite` while the CLI had
 `--db`, so it could not be run against a copy or a fixture.
 
-⚠ **Still missing: library search and fulltext.** Until those exist in `read/` they come
-from cookjohn's third-party `zotero-plugin` MCP. That server's nine **write** tools
-duplicate the gated ones and are denied at the Claude Code permission layer; only its
-reads are used. Closing this gap is what lets it be unregistered outright.
+**Search** (`read/search.py`) is **fuzzy by default**, which nothing in the stack had.
+Zotero's own search is substring-only: `Langevan Dynmaics` returns **zero** results there
+and scores **0.875** here against the paper it means. Scoring is token-wise — a
+whole-string ratio gives 0.395 on that pair, because the candidate title is three times
+longer than the query. Every hit reports `matched_on`, so a surprising result explains
+itself.
+
+Fulltext search runs in **two stages**: Zotero's word index has no positions and no
+counts, so it narrows candidates, and only the survivors' `.zotero-ft-cache` files are
+opened for the phrase and its context. A query touches a handful of files rather than
+587 MB.
 
 **Collections** (`read/collections.py`) landed 2026-08-19 — the tree with breadcrumb
 paths, membership, and the inverse (which collections an item is in) that nothing

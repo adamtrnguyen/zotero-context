@@ -9,6 +9,7 @@ from .bridge import DEFAULT_BRIDGE_URL, ZoteroBridgeClient
 from .collections import ZoteroCollectionStore
 from .duplicates import check_duplicate as _check_duplicate
 from .items import ZoteroItemStore
+from .search import ZoteroSearchStore
 
 
 class ZoteroContext:
@@ -29,6 +30,7 @@ class ZoteroContext:
         # plugin, which is exactly what this package exists to prevent.
         self.items = ZoteroItemStore(zotero_db_path)
         self.collections = ZoteroCollectionStore(zotero_db_path)
+        self.search = ZoteroSearchStore(zotero_db_path)
 
     def ping(self) -> dict:
         return self.bridge.ping()
@@ -208,6 +210,96 @@ class ZoteroContext:
                 {"key": n.key, "name": n.name, "path": n.path, "item_count": n.item_count}
                 for n in found
             ],
+        }
+
+    def search_items(
+        self,
+        query: str,
+        *,
+        fuzzy: bool = True,
+        limit: int = 25,
+        item_type: str | None = None,
+    ) -> dict:
+        hits, read_mode = self.search.items(
+            query, fuzzy=fuzzy, limit=limit, item_type=item_type
+        )
+        return {
+            "query": query,
+            "fuzzy": fuzzy,
+            "count": len(hits),
+            "read_mode": read_mode,
+            "hits": [
+                {
+                    "item_key": h.item_key,
+                    "title": h.title,
+                    "item_type": h.item_type,
+                    "creators": h.creators,
+                    "score": h.score,
+                    "matched_on": h.matched_on,
+                }
+                for h in hits
+            ],
+        }
+
+    def search_annotations(
+        self,
+        query: str = "",
+        *,
+        color: str | None = None,
+        annotation_types: set[str] | None = None,
+        limit: int = 25,
+    ) -> dict:
+        hits, read_mode = self.search.annotations(
+            query, color=color, types=annotation_types, limit=limit
+        )
+        return {
+            "query": query,
+            "count": len(hits),
+            "read_mode": read_mode,
+            "annotations": [
+                {
+                    "annotation_key": h.annotation_key,
+                    "attachment_key": h.attachment_key,
+                    "parent_key": h.parent_key,
+                    "parent_title": h.parent_title,
+                    "type": h.annotation_type,
+                    "text": h.text,
+                    "comment": h.comment,
+                    "color": h.color,
+                    "page_label": h.page_label,
+                }
+                for h in hits
+            ],
+        }
+
+    def search_fulltext(self, query: str, *, limit: int = 25) -> dict:
+        hits, read_mode = self.search.fulltext(query, limit=limit)
+        return {
+            "query": query,
+            "count": len(hits),
+            "read_mode": read_mode,
+            "documents": [
+                {
+                    "attachment_key": h.attachment_key,
+                    "parent_key": h.parent_key,
+                    "title": h.title,
+                    "match_count": h.match_count,
+                    "snippets": list(h.snippets),
+                }
+                for h in hits
+            ],
+        }
+
+    def attachment_text(self, attachment_key: str, *, max_chars: int = 20000) -> dict:
+        text = self.search.attachment_text(attachment_key)
+        if text is None:
+            return {"ok": False, "error": "not_indexed", "attachment_key": attachment_key}
+        return {
+            "ok": True,
+            "attachment_key": attachment_key,
+            "chars": len(text),
+            "truncated": len(text) > max_chars,
+            "text": text[:max_chars],
         }
 
     def get_sources_with_annotations(self, *, include_citekeys: bool = True) -> list[ZoteroSource]:

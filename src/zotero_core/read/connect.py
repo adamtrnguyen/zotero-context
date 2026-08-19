@@ -30,6 +30,20 @@ USER_LIBRARY_ID = 1
 
 DEFAULT_BUSY_TIMEOUT_MS = 5000
 
+# The PROBE gets its own, much shorter timeout, and this is a performance fix worth
+# understanding rather than a tuning knob.
+#
+# `busy_timeout` exists so a real query rides out a brief write burst. Applying it to the
+# probe means the opposite: with Zotero running and holding the rollback-journal lock,
+# `mode=ro` cannot succeed no matter how long we wait, so the probe blocks for the FULL
+# timeout and only then falls back. Measured 2026-08-19 against the live library:
+# 5,151 ms to open a connection, versus 19 ms for the query it was opening for. Every
+# read in this package paid that whenever Zotero was open, which is nearly always.
+#
+# A short probe trades a slightly higher chance of choosing the `immutable=1` snapshot --
+# reported honestly in `read_mode`, never hidden -- for a two-order-of-magnitude speedup.
+PROBE_TIMEOUT_MS = 150
+
 
 def open_readonly(
     db_path: str | Path,
@@ -42,11 +56,14 @@ def open_readonly(
         raise ZoteroAnnotationError(f"Zotero database not found: {path}")
     try:
         conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True, timeout=5.0)
-        conn.execute(f"PRAGMA busy_timeout={int(busy_timeout_ms)}")
+        conn.execute(f"PRAGMA busy_timeout={int(PROBE_TIMEOUT_MS)}")
         # Touch a table: `connect` succeeds lazily, so the lock only surfaces on the
         # first real read. Without this the fallback never fires and the caller gets
         # "database is locked" from the middle of a query instead.
         conn.execute("SELECT 1 FROM items LIMIT 1").fetchone()
+        # The probe won, so this really is a live read -- give the caller the full
+        # timeout for the queries that follow, which is what it was always meant for.
+        conn.execute(f"PRAGMA busy_timeout={int(busy_timeout_ms)}")
         return conn, "mode=ro"
     except sqlite3.Error:
         try:

@@ -42,32 +42,11 @@ package, not to reimplement a third time.
 from __future__ import annotations
 
 import re
-import unicodedata
 
+from ..domain.policy import normalize_title as _norm_title
+from ..domain.policy import surname_of as _surname
 from .connect import open_readonly
 from .items import ZoteroItemStore
-
-
-def _norm_title(title: str) -> str:
-    """Casefold, strip accents and punctuation, collapse whitespace.
-
-    NFKD then dropping combining marks is what makes 'Hébert' match 'Hebert'. Note
-    the limitation the module docstring names: this also strips kana voicing marks,
-    which are phonemic, so 'が' and 'か' collapse. calibre-core's version does not.
-    """
-    if not title:
-        return ""
-    decomposed = unicodedata.normalize("NFKD", title)
-    stripped = "".join(c for c in decomposed if not unicodedata.combining(c))
-    return re.sub(r"\s+", " ", re.sub(r"[^\w\s]", " ", stripped)).strip().casefold()
-
-
-def _surname(creator: dict[str, str]) -> str:
-    """The surname a match should key on, normalised."""
-    raw = creator.get("lastName") or creator.get("name") or ""
-    # An organisation in single-field mode has no surname as such; key on the whole
-    # name, which is what a human comparing two records would do.
-    return _norm_title(raw.split(",")[0])
 
 
 def clean_doi(doi: str | None) -> str:

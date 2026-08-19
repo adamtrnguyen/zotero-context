@@ -105,3 +105,12 @@ INSERT INTO baseFieldMappingsCombined (itemTypeID, baseFieldID, fieldID) VALUES 
 INSERT INTO creatorTypes (creatorTypeID, creatorType) VALUES (1, 'author');
 INSERT INTO creatorTypes (creatorTypeID, creatorType) VALUES (2, 'contributor');
 INSERT INTO creatorTypes (creatorTypeID, creatorType) VALUES (3, 'editor');
+
+-- Zotero's fulltext index. Word -> item, with NO positions and NO counts: it can say
+-- which documents contain a word and nothing about adjacency, which is why
+-- `read/search.py` uses it only to narrow candidates before reading .zotero-ft-cache.
+CREATE TABLE fulltextItems (    itemID INTEGER PRIMARY KEY,    indexedPages INT,    totalPages INT,    indexedChars INT,    totalChars INT,    version INT NOT NULL DEFAULT 0,    synced INT NOT NULL DEFAULT 0);
+
+CREATE TABLE fulltextWords (    wordID INTEGER PRIMARY KEY,    word TEXT UNIQUE);
+
+CREATE TABLE fulltextItemWords (    wordID INT,    itemID INT,    PRIMARY KEY (wordID, itemID));

@@ -24,8 +24,9 @@ the refusal.
 Collection reads landed next (`read/collections.py`), including the inverse -- which
 collections an item is in -- that nothing answered before.
 
-Still missing: library search and fulltext. Until those exist in `read/`, they come from
-cookjohn's third-party plugin.
+Search followed (`read/search.py`), including FUZZY metadata matching, which nothing in
+the stack had: Zotero's own search is substring-only and returns zero for a query with
+one typo.
 """
 
 from __future__ import annotations
@@ -186,6 +187,34 @@ def get_zotero_item_collections(item_keys: Any) -> dict:
 
 def find_zotero_collections(name: str) -> dict:
     return context().find_collections(name)
+
+
+def search_zotero_items(
+    query: str,
+    fuzzy: bool = True,
+    limit: int = 25,
+    item_type: str | None = None,
+) -> dict:
+    return context().search_items(query, fuzzy=fuzzy, limit=limit, item_type=item_type)
+
+
+def search_zotero_annotations(
+    query: str = "",
+    color: str | None = None,
+    annotation_types: Any = None,
+    limit: int = 25,
+) -> dict:
+    return context().search_annotations(
+        query, color=color, annotation_types=parse_types(annotation_types), limit=limit
+    )
+
+
+def search_zotero_fulltext(query: str, limit: int = 25) -> dict:
+    return context().search_fulltext(query, limit=limit)
+
+
+def get_zotero_attachment_text(attachment_key: str, max_chars: int = 20000) -> dict:
+    return context().attachment_text(attachment_key, max_chars=max_chars)
 
 
 @dataclass(frozen=True)
@@ -381,6 +410,72 @@ TOOLS: tuple[_ToolSpec, ...] = (
         ),
         properties={"name": {"type": "string"}},
         required=("name",),
+    ),
+    _ToolSpec(
+        name="search_zotero_items",
+        verb=search_zotero_items,
+        description=(
+            "Search the library by title, creator, tag or DOI. FUZZY by default -- it "
+            "tolerates typos, which Zotero's own substring search does not: 'Langevan "
+            "Dynmaics' returns nothing there and scores 0.875 here. Each hit reports "
+            "`matched_on` so a surprising result explains itself. Set fuzzy=false for "
+            "exact substring."
+        ),
+        properties={
+            "query": {"type": "string"},
+            "fuzzy": {"type": "boolean", "default": True},
+            "limit": {"type": "integer", "default": 25},
+            "item_type": {
+                "type": "string",
+                "description": "Restrict to one Zotero type, e.g. 'book'.",
+            },
+        },
+        required=("query",),
+    ),
+    _ToolSpec(
+        name="search_zotero_annotations",
+        verb=search_zotero_annotations,
+        description=(
+            "Search your highlights and comments, optionally filtered by COLOUR and "
+            "type. Colour is how people encode meaning in Zotero, so 'the yellow ones' "
+            "is a real query. Substring, not fuzzy -- you highlighted the words "
+            "yourself. Omit `query` to browse by colour or type alone."
+        ),
+        properties={
+            "query": {"type": "string"},
+            "color": {"type": "string", "description": "Zotero hex, e.g. '#ffd400'."},
+            "annotation_types": _ANNOTATION_TYPES_PROP,
+            "limit": {"type": "integer", "default": 25},
+        },
+    ),
+    _ToolSpec(
+        name="search_zotero_fulltext",
+        verb=search_zotero_fulltext,
+        description=(
+            "Search the extracted TEXT of indexed PDFs, returning context snippets. "
+            "Phrase-aware: matches across line breaks and punctuation. Narrowed by "
+            "Zotero's word index first, so it reads only the handful of documents that "
+            "could match rather than all 587 MB of cache."
+        ),
+        properties={
+            "query": {"type": "string"},
+            "limit": {"type": "integer", "default": 25},
+        },
+        required=("query",),
+    ),
+    _ToolSpec(
+        name="get_zotero_attachment_text",
+        verb=get_zotero_attachment_text,
+        description=(
+            "The full extracted text of one attachment. Returns "
+            "`{ok: false, error: 'not_indexed'}` when Zotero never indexed it -- which "
+            "is the honest answer for a scan with no text layer."
+        ),
+        properties={
+            "attachment_key": {"type": "string"},
+            "max_chars": {"type": "integer", "default": 20000},
+        },
+        required=("attachment_key",),
     ),
     _ToolSpec(
         name="ping_zotero",

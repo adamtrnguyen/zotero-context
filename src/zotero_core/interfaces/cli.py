@@ -90,6 +90,23 @@ def build_parser() -> argparse.ArgumentParser:
     icoll.add_argument("item_keys", nargs="+")
     fcoll = sub.add_parser("find-collections", parents=[common], help="Collections by name")
     fcoll.add_argument("name")
+
+    search = sub.add_parser("search", parents=[common], help="Fuzzy search title/creator/tag/DOI")
+    search.add_argument("query")
+    search.add_argument("--exact", action="store_true", help="Substring instead of fuzzy")
+    search.add_argument("--limit", type=int, default=25)
+    search.add_argument("--type", dest="item_type")
+    sann = sub.add_parser("search-annotations", parents=[common], help="Search highlights")
+    sann.add_argument("query", nargs="?", default="")
+    sann.add_argument("--color")
+    sann.add_argument("--annotation-types", default="")
+    sann.add_argument("--limit", type=int, default=25)
+    sft = sub.add_parser("search-fulltext", parents=[common], help="Search indexed PDF text")
+    sft.add_argument("query")
+    sft.add_argument("--limit", type=int, default=25)
+    atext = sub.add_parser("attachment-text", parents=[common], help="Extracted text of one PDF")
+    atext.add_argument("attachment_key")
+    atext.add_argument("--max-chars", type=int, default=20000)
     return parser
 
 
@@ -161,6 +178,19 @@ _HANDLERS: dict[str, Callable[[ZoteroContext, argparse.Namespace], Any]] = {
     ),
     "item-collections": lambda ctx, a: ctx.item_collections(a.item_keys),
     "find-collections": lambda ctx, a: ctx.find_collections(a.name),
+    "search": lambda ctx, a: ctx.search_items(
+        a.query, fuzzy=not a.exact, limit=a.limit, item_type=a.item_type
+    ),
+    "search-annotations": lambda ctx, a: ctx.search_annotations(
+        a.query,
+        color=a.color,
+        annotation_types=parse_types(a.annotation_types),
+        limit=a.limit,
+    ),
+    "search-fulltext": lambda ctx, a: ctx.search_fulltext(a.query, limit=a.limit),
+    "attachment-text": lambda ctx, a: ctx.attachment_text(
+        a.attachment_key, max_chars=a.max_chars
+    ),
 }
 
 
