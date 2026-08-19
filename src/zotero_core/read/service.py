@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from ..domain.entities import Annotation, ReaderContext, ReaderState, WindowState, ZoteroSource
 from .annotations import DEFAULT_ZOTERO_DB, ZoteroAnnotationStore
 from .bbt import DEFAULT_BBT_RPC_URL, BetterBibTeXClient
 from .bridge import DEFAULT_BRIDGE_URL, ZoteroBridgeClient
-from .models import Annotation, ReaderContext, ReaderState, WindowState, ZoteroSource
 
 
 class ZoteroContext:

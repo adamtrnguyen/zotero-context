@@ -23,13 +23,12 @@ from __future__ import annotations
 
 import re
 
-from zotero_context.items import ZoteroItemStore
-
-from .cookjohn import CookjohnClient, find_key
+from ..read.items import ZoteroItemStore
 from .errors import Reason, WriteBlocked
 from .journal import write_manifest
-from .linker import LinkerClient
 from .liveness import require_zotero
+from .transports.cookjohn import CookjohnClient, find_key
+from .transports.linker import LinkerClient
 
 _KEY_RE = re.compile(r"^[A-Z0-9]{8}$")
 
@@ -334,7 +333,7 @@ def add_items_to_collection(
     store=None,
 ) -> dict:
     """File items into a collection. No manifest — the inverse is a removal."""
-    from .writes import check_keys, require_items
+    from .verbs import check_keys, require_items
 
     linker, cookjohn, store = _session(linker, cookjohn, store)
     _check_collection_key(collection_key)
@@ -372,7 +371,7 @@ def remove_items_from_collection(
     this and `trash_items` is exactly the one a caller in a hurry gets wrong. Nothing
     here deletes an item.
     """
-    from .writes import check_keys, require_items
+    from .verbs import check_keys, require_items
 
     linker, cookjohn, store = _session(linker, cookjohn, store)
     _check_collection_key(collection_key)

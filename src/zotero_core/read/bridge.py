@@ -4,7 +4,7 @@ import json
 import urllib.error
 import urllib.request
 
-from .models import WindowState
+from ..domain.entities import WindowState
 
 DEFAULT_BRIDGE_URL = "http://127.0.0.1:23119/zotero-bridge/window-state"
 DEFAULT_PING_URL = "http://127.0.0.1:23119/zotero-bridge/ping"

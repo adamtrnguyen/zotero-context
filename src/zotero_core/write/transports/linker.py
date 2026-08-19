@@ -33,7 +33,7 @@ import json
 import urllib.error
 import urllib.request
 
-from .errors import Reason, WriteBlocked
+from ..errors import Reason, WriteBlocked
 
 DEFAULT_LINKER_URL = "http://127.0.0.1:23119/zotero-linker"
 

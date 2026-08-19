@@ -5,11 +5,11 @@ import json
 from pathlib import Path
 from typing import Any
 
-from .annotations import DEFAULT_ZOTERO_DB
-from .bbt import DEFAULT_BBT_RPC_URL
-from .bridge import DEFAULT_BRIDGE_URL
-from .models import to_jsonable
-from .service import ZoteroContext
+from ..domain.entities import to_jsonable
+from ..read.annotations import DEFAULT_ZOTERO_DB
+from ..read.bbt import DEFAULT_BBT_RPC_URL
+from ..read.bridge import DEFAULT_BRIDGE_URL
+from ..read.service import ZoteroContext
 
 
 def main(argv: list[str] | None = None) -> int:

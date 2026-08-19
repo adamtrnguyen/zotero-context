@@ -43,7 +43,7 @@ import re
 import urllib.error
 import urllib.request
 
-from .errors import Reason, WriteBlocked
+from ..errors import Reason, WriteBlocked
 
 DEFAULT_COOKJOHN_URL = "http://127.0.0.1:23121/mcp"
 

@@ -1,50 +1,69 @@
 [project]
-name = "zotero-context"
-version = "0.1.0"
-description = "Read-only Python API for local Zotero window state and annotations"
+name = "zotero-core"
+version = "0.2.0"
+description = "The one place that knows what a local Zotero library is: gated CRUD over a read layer that owns every Zotero SQL query."
 requires-python = ">=3.10"
+# Still zero. The read layer is stdlib sqlite3; both write transports are stdlib
+# urllib + json. That is load-bearing, not incidental: `calibre-zotero-jump/ui.py`
+# runs inside Calibre's embedded Python, which cannot see a uv virtualenv, and it
+# vendors `write/transports/cookjohn.py` verbatim rather than reimplementing it.
 dependencies = []
 
 [project.optional-dependencies]
 mcp = [
-  # <2 deliberately. mcp 2.0.0 is a different API: no `@server.list_tools()`
-  # decorator and no `mcp.server.fastmcp`. This adapter targets 1.x, and an
-  # unpinned `>=1.0.0` resolved 2.0.0 and crashed the server at import with
-  # `'Server' object has no attribute 'list_tools'` — which is why it was never
-  # registered and never noticed. calibre-mcp pins the same way for the same
-  # reason. Revisit only by porting the adapter.
+  # <2 deliberately. mcp 2.0.0 is a different API: no `@server.list_tools()` decorator
+  # and no `mcp.server.fastmcp`. Both adapters target 1.x, and an unpinned `>=1.0.0`
+  # once resolved 2.0.0 and crashed the server at import with `'Server' object has no
+  # attribute 'list_tools'` -- which is how the read adapter sat broken long enough
+  # never to be registered and never noticed. calibre-mcp pins the same way for the
+  # same reason. Revisit only by porting both adapters.
+  #
+  # This pin used to exist TWICE, in two pyprojects, with two copies of this comment.
+  # Collapsing that was part of the point of merging.
   "mcp>=1.26.0,<2",
 ]
 
 [project.scripts]
-zotero-context = "zotero_context.cli:main"
-zotero-context-mcp = "zotero_context.mcp_server:run"
+zotero-core = "zotero_core.interfaces.cli:main"
+# Two adapters for now, one registration each. They collapse into a single
+# `zotero-core-mcp --read-only` once the read surface is complete; until then the read
+# server is the only one safe to expose in a context that must not write.
+zotero-core-read-mcp = "zotero_core.interfaces.read_mcp:run"
+zotero-core-write-mcp = "zotero_core.interfaces.write_mcp:run"
 
 [dependency-groups]
-# PEP 735, not extras: `--extra mcp` is a runtime capability a consumer opts into, while
-# nobody consuming `zotero_context` wants a type checker. Matches writes/ and the
-# sibling repos.
+# PEP 735 rather than extras: `--extra mcp` is a runtime capability a consumer opts
+# into, while nobody consuming this package wants a type checker.
 dev = [
+    "pytest>=8",
     "ruff>=0.6",
     "ty==0.0.55",  # PINNED EXACTLY: ty is pre-1.0 (0.0.x) and its diagnostics change
-                   # between releases, so an unpinned bump turns `just lint` red with no
-                   # code change. Bump deliberately, both packages together.
+                   # between releases, so an unpinned bump turns `just lint` red with
+                   # no code change. Same pin as omni-rag and the other siblings.
+    "import-linter>=2.9",
     "vulture>=2.14",
     "codespell>=2.4",
 ]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --strict-markers --strict-config"
 
 [tool.ruff]
 target-version = "py310"
 line-length = 100
 
 [tool.ruff.lint]
-# Same rule set as writes/, calibre-core and the rest of Adam's Python: pycodestyle +
-# pyflakes, import order, bugbear, pyupgrade, complexity ceiling.
+# Same rule set as calibre-core and the rest of Adam's Python: pycodestyle + pyflakes,
+# import order, bugbear, pyupgrade, complexity ceiling.
 select = ["E", "F", "I", "B", "UP", "C901"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["zotero_context"]
+known-first-party = ["zotero_core"]
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/zotero_core"]

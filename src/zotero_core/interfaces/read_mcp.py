@@ -4,8 +4,8 @@ import asyncio
 import json
 from typing import Any
 
-from .models import to_jsonable
-from .service import ZoteroContext
+from ..domain.entities import to_jsonable
+from ..read.service import ZoteroContext
 
 
 def run() -> None:

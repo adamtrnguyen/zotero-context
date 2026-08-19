@@ -50,14 +50,13 @@ from __future__ import annotations
 import os
 import re
 
-from zotero_context.duplicates import check_duplicate
-from zotero_context.items import ZoteroItemStore
-
-from .cookjohn import CookjohnClient, find_key
+from ..read.duplicates import check_duplicate
+from ..read.items import ZoteroItemStore
 from .errors import Reason, WriteBlocked
 from .journal import copy_database, write_manifest
-from .linker import LinkerClient
 from .liveness import require_zotero
+from .transports.cookjohn import CookjohnClient, find_key
+from .transports.linker import LinkerClient
 
 # Eight characters, uppercase alphanumeric. Zotero's actual alphabet is narrower --
 # all 3405 keys in the live library use only `23456789ABCDEFGHIJKLMNPQRSTUVWXYZ`

@@ -20,8 +20,8 @@ from pathlib import Path
 
 import pytest
 
-from zotero_context.duplicates import check_duplicate, clean_doi, clean_isbn
-from zotero_writes import (
+from zotero_core.read.duplicates import check_duplicate, clean_doi, clean_isbn
+from zotero_core.write import (
     Reason,
     WriteBlocked,
     add_items_to_collection,

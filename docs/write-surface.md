@@ -1,10 +1,16 @@
-# zotero-writes
+# zotero-core
+
+> ℹ **Merged 2026-08-19.** This was `writes/README.md`, when the write surface was its
+> own distribution. It is now the `zotero_core.write` layer; module paths below have been
+> updated, and the argument for keeping it a separate package is answered in
+> `src/zotero_core/write/__init__.py`.
+
 
 The one CRUD surface for the local Zotero library. Everything that mutates Zotero
 goes through here, and **the caller never picks a transport.**
 
 ```python
-from zotero_writes import create_item, add_tags, trash_items, restore_items, WriteBlocked
+from zotero_core.write import create_item, add_tags, trash_items, restore_items, WriteBlocked
 
 try:
     item = create_item("book", {"title": "Systems Thinking"}, calibre_uuid=uuid)
@@ -26,7 +32,7 @@ caller had to know which served which verb:
 |---|---|---|
 | create / update / notes / tags / collections | cookjohn `zotero-mcp-plugin` | 23121 (MCP JSON-RPC) |
 | linked attachments / trash / restore | `zotero-linker` | 23119 (plain HTTP) |
-| reads | `zotero_context` → `zotero.sqlite` | — |
+| reads | `zotero_core.read` → `zotero.sqlite` | — |
 
 Two consumers learned that split by copying a client. `importers/calibre2zotero/
 sync.py:139` and `calibre-zotero-jump/ui.py:24` carry near-identical MCP clients,
@@ -42,15 +48,15 @@ scattered places instead of three.
 ## Where it lives, and what `core/` is
 
 **`core/` is not the single Zotero owner. It is the read half; this is the write
-half.** The dependency runs `zotero_writes` → `zotero_context`, never the reverse,
+half.** The dependency runs `zotero_core.write` → `zotero_core.read`, never the reverse,
 and `core/`'s "read-only forever" contract is **unamended**.
 
 The alternative was amending that contract so one package owned everything, with
 calibre-core as precedent — its docstring says an earlier version "over-read its own
 reason: the argument is against raw SQL, not against owning the gate." Sound there,
 and it does not transfer, for three reasons spelled out in
-`src/zotero_writes/__init__.py`: ZoteroSuite never conflated the two rules (they are
-separate README bullets, so there is no tangle to undo); `zotero_context` has
+`src/zotero_core/write/__init__.py`: ZoteroSuite never conflated the two rules (they are
+separate README bullets, so there is no tangle to undo); `zotero_core.read` has
 `dependencies = []` and feeds an Obsidian JSON CLI, while a CRUD surface needs two
 HTTP clients; and every write precondition is a read, so the direction is naturally
 acyclic.
@@ -65,7 +71,7 @@ cannot create at all.
 | | verbs | transport |
 |---|---|---|
 | **create** | `create_item`, `link_attachment`, `import_attachment`, `write_note`, `create_collection` | cookjohn + linker |
-| **read** | *not here* — `zotero_context` owns reads and is already correct | core |
+| **read** | *not here* — `zotero_core.read` owns reads and is already correct | core |
 | **update** | `update_metadata`, `add_tags`, `remove_tags`, `set_tags`, `replace_creators`, `write_note(action=…)`, `update_collection`, `add_items_to_collection`, `remove_items_from_collection` | cookjohn |
 | **delete** | `trash_items` / `restore_items`, `delete_collection` | linker + cookjohn |
 
@@ -78,7 +84,7 @@ plugin name into its parameter names.
 
 ```bash
 uv sync --extra mcp
-zotero-writes-mcp          # stdio server, 17 tools
+zotero-core-write-mcp          # stdio server, 17 tools
 ```
 
 Every verb above, one tool each (`zotero_trash_items`, `zotero_set_tags`, …), plus
@@ -93,7 +99,7 @@ which speaks plain HTTP — so removing an item meant driving `uv run python` on
 
 Three things it deliberately does not expose:
 
-- **reads** — `zotero_context` owns them and the `zotero-context` server already
+- **reads** — `zotero_core.read` owns them and the `zotero-core` server already
   serves them. A second answer to "what is in the library" is the failure this
   package exists to end.
 - **`store` / `linker` / `cookjohn`** — injection seams. As tool parameters they would

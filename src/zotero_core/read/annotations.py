@@ -3,7 +3,7 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
-from .models import Annotation, ZoteroSource
+from ..domain.entities import Annotation, ZoteroSource
 
 DEFAULT_ZOTERO_DB = Path.home() / "Zotero" / "zotero.sqlite"
 

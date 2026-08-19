@@ -1,0 +1,131 @@
+# Derived from the code, by reading every import in `src/zotero_core`. There are no
+# third-party imports to check: the read layer is stdlib `sqlite3`, both write
+# transports are stdlib `urllib`, and `mcp` appears only inside the adapters.
+#
+# WHAT MERGING CHANGED, AND WHAT IT DID NOT
+# -----------------------------------------
+# This file used to live in `writes/` and name TWO root packages, because the most
+# load-bearing rule in the suite was a rule about the pair -- "core/ stays read-only
+# forever... the dependency runs writes/ -> core/ and never the reverse" -- and that
+# was unenforceable from inside either package alone. `core` had `dependencies = []`
+# and could not even name `zotero_writes`, so `core/` shipped with NO contracts at all.
+#
+# The merge turns that pair-rule into contract 1 below. It is the same rule: direction.
+# What is new is contract 5 -- `domain` cannot import a driver -- which could not be
+# expressed before, because there was no domain layer for the duplicated key regex and
+# title normaliser to live in.
+[importlinter]
+root_packages =
+    zotero_core
+# Required because the forbidden contracts below name modules outside the root package
+# (`sqlite3`, `urllib`, `mcp`); without it import-linter errors instead of checking.
+include_external_packages = True
+
+# --------------------------------------------------------------------------
+# 1. the direction that used to be a package boundary
+# --------------------------------------------------------------------------
+# Formerly the `suite-direction` contract over two root packages. `read` must never
+# import `write`: every precondition a write needs is a read (does the key resolve, is
+# it already trashed, what tags are there to be replaced), so writes depend on reads
+# and reads never depend on writes. That acyclicity is why one package is safe.
+#
+# `zotero_core/__init__.py` is deliberately NOT a layer: it is the public read surface
+# and imports across `read` and `domain` by design.
+[importlinter:contract:layers]
+name = interfaces above write above read above domain
+type = layers
+layers =
+    zotero_core.interfaces
+    zotero_core.write
+    zotero_core.read
+    zotero_core.domain
+
+# --------------------------------------------------------------------------
+# 2. the write spine
+# --------------------------------------------------------------------------
+# Read off the imports rather than designed. Bottom to top:
+#
+#   errors, journal    no intra-package imports at all. Independent of each other.
+#   linker, cookjohn   import `..errors` only. Independent of each other -- they are
+#                      the two transports and neither knows the other exists, which is
+#                      the property that lets a verb need one and not the other.
+#   liveness           imports both transports and `.errors`. It is the only module
+#                      that knows about both, because distinguishing "Zotero is down"
+#                      from "one plugin is missing" needs both probes.
+#   verbs, collections NON-INDEPENDENT siblings (`:` not `|`): they import each other
+#                      through deferred function-level imports -- `verbs.create_item`
+#                      calls `collections.add_items_to_collection` to file a new item,
+#                      and both collection-membership verbs call
+#                      `verbs.check_keys`/`require_items`. That cycle is real and
+#                      declaring it is more honest than splitting the layer to hide it.
+#
+# The adapter is no longer the top of this spine -- it moved to `interfaces`, where
+# contract 1 already places it above everything here.
+[importlinter:contract:write-spine]
+name = write layers: verbs above liveness above transports above errors
+type = layers
+layers =
+    zotero_core.write.verbs : zotero_core.write.collections
+    zotero_core.write.liveness
+    zotero_core.write.transports.linker | zotero_core.write.transports.cookjohn
+    zotero_core.write.errors | zotero_core.write.journal
+
+# --------------------------------------------------------------------------
+# 3. no SQL in the write path
+# --------------------------------------------------------------------------
+# "Never open zotero.sqlite read-write". Every read a gate needs comes from
+# `zotero_core.read`, which opens the database read-only with an `immutable=1`
+# fallback. A local `sqlite3.connect()` here would be a second, ungated path to the
+# same file, in the layer whose entire purpose is that there is one path.
+#
+# `allow_indirect_imports = True` is REQUIRED and is not a loosening -- without it the
+# contract fails on `write.collections -> read.items -> sqlite3`, which is the
+# sanctioned path this rule exists to funnel reads INTO. The rule is "no `import
+# sqlite3` in this layer", not "never reach a module that opens the database"; the
+# latter would forbid reading anything at all.
+[importlinter:contract:no-sql-in-the-write-path]
+name = write reaches the database only through read
+type = forbidden
+source_modules =
+    zotero_core.write
+forbidden_modules =
+    sqlite3
+allow_indirect_imports = True
+
+# --------------------------------------------------------------------------
+# 4. `mcp` belongs to the adapters alone
+# --------------------------------------------------------------------------
+# `cookjohn.py`: "this module is stdlib-only too: urllib and json, nothing else... it
+# can at least be VENDORED verbatim instead of rewritten." `calibre-zotero-jump/ui.py`
+# runs inside Calibre's embedded Python, which cannot see a uv virtualenv, so an `mcp`
+# import anywhere in the write path would make it unvendorable -- and would force every
+# consumer to install an async runtime to import a tag verb. `interfaces` is excluded
+# because it is the layer allowed to import it, and it does so INSIDE `main()`; AST
+# tests assert that from the other direction.
+[importlinter:contract:mcp-only-in-the-adapter]
+name = only interfaces may import mcp, so the rest stays stdlib-only and vendorable
+type = forbidden
+source_modules =
+    zotero_core.write
+    zotero_core.read
+    zotero_core.domain
+forbidden_modules =
+    mcp
+
+# --------------------------------------------------------------------------
+# 5. the domain is pure  (NEW -- could not be expressed before the merge)
+# --------------------------------------------------------------------------
+# `domain` holds the rules that were duplicated because there was nowhere to put them:
+# the 8-char key regex lived in THREE files, and the title normaliser is described in
+# its own docstring as "a degraded copy of calibre-core's". A layer that cannot import
+# a driver is what stops them drifting apart again -- entities and policy must be
+# checkable without a database, a network, or an async runtime.
+[importlinter:contract:domain-is-pure]
+name = domain imports no driver -- no sqlite, no network, no mcp
+type = forbidden
+source_modules =
+    zotero_core.domain
+forbidden_modules =
+    sqlite3
+    urllib
+    mcp

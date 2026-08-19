@@ -20,8 +20,8 @@ from pathlib import Path
 
 import pytest
 
-from zotero_context.items import ZoteroItemStore
-from zotero_writes import (
+from zotero_core.read.items import ZoteroItemStore
+from zotero_core.write import (
     ALL_REASONS,
     CookjohnClient,
     LinkerClient,
@@ -396,7 +396,7 @@ def test_a_manifest_written_with_no_journal_dir_honours_the_redirect(zotero, lin
     bound at import, the autouse redirect silently did nothing, and the suite wrote 216
     manifests into the shared `/tmp/zotero-write-journal` — polluting the audit trail for
     real writes. If this test fails, that is happening again."""
-    import zotero_writes.journal as journal_mod
+    import zotero_core.write.journal as journal_mod
 
     zotero.add("ABCD2345", "A Paper")
     out = trash_items(["ABCD2345"], store=zotero.store(), linker=linker)
@@ -527,9 +527,9 @@ def test_no_verb_can_erase_an_item(zotero, linker):
 
     `delete_collection` is the one verb whose NAME says delete, and it deletes a
     folder, not its contents — which is exactly why the name alone is not the check."""
-    import zotero_writes
+    import zotero_core.write
 
-    surface = " ".join(dir(zotero_writes)).lower()
+    surface = " ".join(dir(zotero_core.write)).lower()
     for forbidden in ("erase", "empty_trash", "emptytrash", "purge", "destroy", "delete_item"):
         assert forbidden not in surface, f"public surface exposes {forbidden!r}"
 
@@ -542,7 +542,7 @@ def test_no_verb_can_erase_an_item(zotero, linker):
 
 def test_the_write_modules_issue_no_sql():
     """The suite's rule is that mutation never touches zotero.sqlite directly. The only
-    SQL on this path is `zotero_context`, which is read-only — so the write modules
+    SQL on this path is `zotero_core`, which is read-only — so the write modules
     must contain no database access at all.
 
     Parsed rather than grepped. The first version of this test searched the source text
@@ -550,12 +550,12 @@ def test_the_write_modules_issue_no_sql():
     way a structural assertion becomes a prose lint. The AST only sees code."""
     import ast
 
-    import zotero_writes.collections as collections_mod
-    import zotero_writes.cookjohn as cookjohn_mod
-    import zotero_writes.journal as journal_mod
-    import zotero_writes.linker as linker_mod
-    import zotero_writes.liveness as liveness_mod
-    import zotero_writes.writes as writes_mod
+    import zotero_core.write.collections as collections_mod
+    import zotero_core.write.journal as journal_mod
+    import zotero_core.write.liveness as liveness_mod
+    import zotero_core.write.transports.cookjohn as cookjohn_mod
+    import zotero_core.write.transports.linker as linker_mod
+    import zotero_core.write.verbs as writes_mod
 
     for module in (
         writes_mod, collections_mod, linker_mod, cookjohn_mod, liveness_mod, journal_mod
@@ -627,7 +627,7 @@ def test_an_empty_lookup_costs_no_connection(zotero):
 def test_a_missing_database_is_an_error_not_an_empty_answer(tmp_path):
     """Silently reporting 'no items exist' for an absent database would make every
     existence gate pass vacuously."""
-    from zotero_context.annotations import ZoteroAnnotationError
+    from zotero_core.read.annotations import ZoteroAnnotationError
 
     with pytest.raises(ZoteroAnnotationError):
         ZoteroItemStore(tmp_path / "absent.sqlite").item_states(["ABCD2345"])

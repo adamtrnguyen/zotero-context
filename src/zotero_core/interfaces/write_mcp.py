@@ -70,22 +70,21 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
-from zotero_context.items import ZoteroItemStore
-from zotero_context.models import to_jsonable
-
-from . import __version__
-from .collections import (
+from .. import __version__
+from ..domain.entities import to_jsonable
+from ..read.items import ZoteroItemStore
+from ..write.collections import (
     add_items_to_collection,
     create_collection,
     delete_collection,
     remove_items_from_collection,
     update_collection,
 )
-from .cookjohn import CookjohnClient
-from .errors import WriteBlocked
-from .linker import LinkerClient
-from .liveness import ZOTERO_SERVER_URL, zotero_is_running
-from .writes import (
+from ..write.errors import WriteBlocked
+from ..write.liveness import ZOTERO_SERVER_URL, zotero_is_running
+from ..write.transports.cookjohn import CookjohnClient
+from ..write.transports.linker import LinkerClient
+from ..write.verbs import (
     add_tags,
     check_keys,
     create_item,

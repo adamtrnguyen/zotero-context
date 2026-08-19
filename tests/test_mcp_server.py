@@ -38,7 +38,8 @@ from pathlib import Path
 
 import pytest
 
-from zotero_writes import (
+from zotero_core.interfaces import write_mcp as adapter
+from zotero_core.write import (
     ALL_REASONS,
     WriteBlocked,
     add_items_to_collection,
@@ -58,7 +59,6 @@ from zotero_writes import (
     update_metadata,
     write_note,
 )
-from zotero_writes import mcp_server as adapter
 
 # The package's whole public write surface, as `__init__.__all__` groups it. A verb
 # added to the package and not exposed here fails `test_every_public_write_verb_...`.
@@ -81,8 +81,12 @@ def wired(zotero, linker, cookjohn, monkeypatch, tmp_path):
     name is enough -- and it is the only way in, because the MCP surface has no
     injection parameter by design.
     """
-    monkeypatch.setattr("zotero_context.items.DEFAULT_ZOTERO_DB", zotero.path)
-    for module in ("zotero_writes.writes", "zotero_writes.collections", "zotero_writes.mcp_server"):
+    monkeypatch.setattr("zotero_core.read.items.DEFAULT_ZOTERO_DB", zotero.path)
+    for module in (
+        "zotero_core.write.verbs",
+        "zotero_core.write.collections",
+        "zotero_core.interfaces.write_mcp",
+    ):
         monkeypatch.setattr(f"{module}.LinkerClient", lambda *_a, **_k: linker, raising=False)
         monkeypatch.setattr(f"{module}.CookjohnClient", lambda *_a, **_k: cookjohn, raising=False)
     return zotero
@@ -327,7 +331,7 @@ def test_preflight_reports_each_transport_separately(wired, monkeypatch):
     """"Zotero is up and one plugin is missing" is a different job to fix than "Zotero
     is closed", and it decides which verbs are available. `require_zotero` raises on the
     first failure, which is right for a write and wrong for a preflight."""
-    monkeypatch.setattr("zotero_writes.mcp_server.zotero_is_running", lambda *a, **k: True)
+    monkeypatch.setattr("zotero_core.interfaces.write_mcp.zotero_is_running", lambda *a, **k: True)
     out = adapter.call_writes("zotero_write_preflight", {})
     assert out["ok"] is True
     assert out["transports"]["linker"]["available"] is True
@@ -336,7 +340,7 @@ def test_preflight_reports_each_transport_separately(wired, monkeypatch):
 
 
 def test_preflight_resolves_keys_without_writing_anything(wired, monkeypatch, linker, cookjohn):
-    monkeypatch.setattr("zotero_writes.mcp_server.zotero_is_running", lambda *a, **k: True)
+    monkeypatch.setattr("zotero_core.interfaces.write_mcp.zotero_is_running", lambda *a, **k: True)
     wired.add("ABCD2345", "A Paper", item_type="book")
     wired.add("ATT12345", "scan.pdf", "attachment", parent="ABCD2345")
     out = adapter.call_writes("zotero_write_preflight", {"item_keys": ["ABCD2345"]})
@@ -355,7 +359,7 @@ def test_preflight_resolves_keys_without_writing_anything(wired, monkeypatch, li
 
 
 def test_preflight_reports_an_unresolvable_key_as_data(wired, monkeypatch):
-    monkeypatch.setattr("zotero_writes.mcp_server.zotero_is_running", lambda *a, **k: True)
+    monkeypatch.setattr("zotero_core.interfaces.write_mcp.zotero_is_running", lambda *a, **k: True)
     out = adapter.call_writes("zotero_write_preflight", {"item_keys": ["NOSUCH12"]})
     assert out["ok"] is False
     assert out["items"]["code"] == "unknown_item_keys"
@@ -369,7 +373,7 @@ def test_mcp_is_imported_inside_a_function_never_at_module_level():
     """`cookjohn.py` is stdlib-only so it can be VENDORED into `calibre-zotero-jump`, a
     Calibre plugin running inside Calibre's embedded Python which cannot see a uv
     virtualenv. A module-level `import mcp` here would put an async runtime in that
-    import path — and would make every consumer of `zotero_writes` need the extra.
+    import path — and would make every consumer of `zotero_core.write` need the extra.
 
     Checked against the source rather than `sys.modules`, which another test may have
     populated. `.importlinter` enforces the same rule from the other direction."""
