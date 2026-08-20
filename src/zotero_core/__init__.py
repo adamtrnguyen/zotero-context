@@ -48,6 +48,7 @@ from zotero_core.domain.entities.gui import (
     ZoteroItem,
 )
 from zotero_core.domain.entities.models import Annotation, ZoteroSource
+from zotero_core.domain.errors import ALL_REASONS, Reason, WriteBlocked
 from zotero_core.domain.services.identifiers import clean_doi, clean_isbn
 from zotero_core.infrastructure.http.bbt import DEFAULT_BBT_RPC_URL, BetterBibTeXClient
 from zotero_core.infrastructure.http.bridge import ZoteroBridgeClient
@@ -153,4 +154,12 @@ __all__ = [
     "write_note",
     "build_write_session",
     "build_context",
+    # The failure vocabulary. Published alongside the write verbs because a caller given a
+    # published way to WRITE and no published way to CATCH has to import
+    # `zotero_core.domain.errors` by path — the exact reach-past-the-surface that broke
+    # `arxiv-bulk`. `Reason` and `ALL_REASONS` come too: `code` is the field a consumer
+    # branches on, and it is worthless without the set of values it can take.
+    "WriteBlocked",
+    "Reason",
+    "ALL_REASONS",
 ]

@@ -14,11 +14,15 @@ trusts a `zotero` identifier on the Calibre side. Two answers to one question is
 what a missing owner produces.
 
 One of the two cannot be fixed by importing this. `calibre-zotero-jump` is a Calibre
-plugin running inside Calibre's embedded Python, which cannot see a uv virtualenv --
-its own comment says "stdlib-only; inline mirrors of importers/calibre2zotero". That
-is why this module is stdlib-only too: `urllib` and `json`, nothing else. It cannot
-be imported there today, but it can at least be VENDORED there verbatim instead of
-rewritten, and the dedupe question now has one answer to vendor.
+plugin running inside Calibre's embedded Python, which cannot see a uv virtualenv, so it
+reimplements what it needs rather than depending on this package.
+
+⚠ THIS PARAGRAPH USED TO CLAIM THIS MODULE IS VENDORED THERE, and that it is "stdlib-only:
+`urllib` and `json`, nothing else". Both are false, and the file contradicted itself: it
+imports `zotero_core.domain.errors` and `zotero_core.domain.services.identity` at module
+scope (see the imports below), and `calibre-zotero-jump/build.sh` zips three files, none of
+them this one. The stdlib-only discipline that DOES hold is about third-party packages --
+`dependencies = []` — not about intra-package imports.
 
 THE SSE UNWRAP, WHICH LOOKS LIKE A HACK AND IS NOT
 --------------------------------------------------

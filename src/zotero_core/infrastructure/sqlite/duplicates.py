@@ -9,8 +9,10 @@ identifier on the CALIBRE side. Those are different questions:
   * the Calibre identifier asks "does Calibre think it pushed this book"
 
 They diverge exactly when a push half-succeeded -- item created, identifier never
-stamped back -- and then one client re-creates what the other can already see. 769
-items in the live library carry a `calibre-uuid:` stamp, so this is not a corner.
+stamped back -- and then one client re-creates what the other can already see. Several
+hundred items in the live library carry a `calibre-uuid:` stamp, so this is not a corner.
+(The exact number moves with every import; `check_duplicate(calibre_uuid=…)` is the thing
+that answers, not a figure written down here.)
 
 VERDICT TIERS, same three as calibre-core
 -----------------------------------------
@@ -32,7 +34,7 @@ ON THE NORMALISER
 ⚠ This paragraph used to say the normaliser "cannot import" calibre-core's better
 `dedup_key` and that "a CJK-titled paper will normalise less well here". The specific
 defect it was describing -- NFKD splitting kana voicing marks so 'が' and 'か' compared
-EQUAL -- is fixed in `domain/policy.py`; those marks are preserved because they are
+EQUAL -- is fixed in `domain/services/policy.py`; those marks are preserved because they are
 phonemic, while Latin accents still fold because they are decoration.
 
 What remains true: this is still not calibre-core's `dedup_key`, which additionally

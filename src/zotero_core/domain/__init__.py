@@ -19,9 +19,13 @@ It is true now: `services/identity.py` holds the one rule, and
 implementation -- `str.isalnum()`, which accepted full-width Unicode the regexes reject --
 was a real divergence between the read and write layers, not just untidiness.
 
-One copy remains ON PURPOSE, in `write/transports/cookjohn.py`: that module is vendored
-verbatim into Calibre's embedded Python and must stay import-standalone. It cannot share
-the code; a test asserts it has not drifted from it.
+⚠ NO COPY REMAINS. This said one survived "ON PURPOSE, in `write/transports/cookjohn.py`:
+that module is vendored verbatim into Calibre's embedded Python and must stay
+import-standalone... a test asserts it has not drifted". Three things wrong: the path is now
+`infrastructure/transports/cookjohn.py`, the file is not vendored anywhere, and it imports
+`zotero_core.domain.*` at module scope so it was never import-standalone. The copy is gone and
+`tests/test_identity.py` is an ABSENCE check -- there is no drift test because there is nothing
+to drift.
 
 `.importlinter`'s `domain-is-pure` contract enforces the "no driver" half.
 """

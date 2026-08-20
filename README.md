@@ -63,9 +63,13 @@ stdlib-only rule survives; vendoring never was.
 ## Read
 
 ```python
-from zotero_core import ZoteroContext, ZoteroItemStore, check_duplicate
+from zotero_core import build_context, ZoteroItemStore, check_duplicate
 
-zc = ZoteroContext()
+# ⚠ `ZoteroContext()` — which this line used to read — raises `TypeError: missing 8
+# required keyword-only arguments`. The class takes PORTS now; `build_context` is the
+# published factory that supplies the real adapters. Publishing a type is not the same as
+# publishing a way to construct one, which is the lesson `arxiv-bulk` taught twice.
+zc = build_context()
 state       = zc.get_window_state()
 active      = zc.get_active_reader()
 annotations = zc.get_annotations(active.attachment_key) if active else []
@@ -101,8 +105,18 @@ public methods and *neither* surface exposed one of them.
 Explicit import: `import zotero_core` stays cheap and read-only.
 
 ```python
-from zotero_core.write import create_item, add_tags, trash_items, restore_items, WriteBlocked
+from zotero_core import build_write_session, WriteBlocked
+from zotero_core.application.services.verbs import create_item, add_tags, trash_items
+
+session = build_write_session()          # every collaborator, wired once
+create_item("book", {"title": "A Book"}, session=session)
+add_tags("ARTINWQZ", ["read"], session=session)
 ```
+
+⚠ `from zotero_core.write import ...` — which this block used to show — is an `ImportError`:
+`write/` became `application/services/`, and every verb takes a required `session`. The
+verbs are also published from the package root (`import_attachment`, `update_metadata`,
+`write_note`), which is what a consumer should prefer.
 
 Zotero must be **running** with the plugin that verb needs. Keys are shape-checked then
 resolved before anything is sent. Creates are duplicate-checked. Verbs that REPLACE a
@@ -161,7 +175,8 @@ opened for the phrase and its context. A query touches a handful of files rather
 paths, membership, and the inverse (which collections an item is in) that nothing
 answered before, in this package or in cookjohn. Two properties worth knowing: item
 counts EXCLUDE trashed items so they match the GUI, and everything is scoped to the user
-library — this machine has group libraries, where 10 of its 95 collections live.
+library — this machine has group libraries, and some collections live in them
+(`list_libraries()` and `collection_tree(library_id=…)` report the split).
 
 ## QA
 

@@ -385,7 +385,7 @@ def test_preflight_reports_an_unresolvable_key_as_data(session):
 # --------------------------------------------------------------------------
 
 def test_mcp_is_imported_inside_a_function_never_at_module_level():
-    """`cookjohn.py` is stdlib-only so it can be VENDORED into `calibre-zotero-jump`, a
+    """`dependencies = []` is the promise (nothing is vendored anywhere — that premise was false), a
     Calibre plugin running inside Calibre's embedded Python which cannot see a uv
     virtualenv. A module-level `import mcp` here would put an async runtime in that
     import path — and would make every consumer of `zotero_core.application` need the extra.

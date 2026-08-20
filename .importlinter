@@ -17,11 +17,16 @@
 #     write/journal.py                     -> infrastructure/journal.py  (the filesystem)
 #     write/errors.py                      -> domain/errors.py           (pure vocabulary)
 #
-# ⚠ `write` is NOT yet `application`, and the order below still puts it ABOVE
-# infrastructure rather than below. That inversion is the real DDD step and it needs
-# ports to exist first (`domain/ports/`), which is the next phase. Naming this layer
-# `application` today would claim a dependency direction that the imports do not have:
-# `write.verbs` imports `infrastructure.transports.cookjohn` by name.
+#     write/{verbs,collections,liveness,replay} -> application/services/
+#
+# ✅ THE INVERSION IS DONE. This comment used to say `write` "is NOT yet `application`" and
+# that the order "still puts it ABOVE infrastructure" — which contradicted the contract 21
+# lines below, where the layers already read
+# `interfaces > infrastructure > application > domain`. It became true when the verbs
+# stopped naming adapters: `application/` now depends on `domain/ports/` only, and
+# `interfaces/factory.py` injects the concrete ones. Verified independently by dumping every
+# import in `application/` and `domain/` — stdlib plus `zotero_core.{domain,application}.*`,
+# nothing else.
 [importlinter]
 root_packages =
     zotero_core

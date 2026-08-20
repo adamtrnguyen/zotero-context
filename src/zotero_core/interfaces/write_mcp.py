@@ -16,7 +16,7 @@ package necessary in the first place:
 
 So this adapter is deliberately NOT a second transport. It is the same gates the CLI
 and the Python callers get, and it adds nothing of its own: no verb here is
-implemented locally, and the transport choice stays where `writes.py` put it.
+implemented locally, and the transport choice stays where `application/services/verbs.py` put it.
 
 WHAT IT DOES NOT EXPOSE, AND WHY
 --------------------------------
@@ -42,24 +42,29 @@ test asserting no schema ships `force` defaulted to True.
 
 WHY A TABLE INSTEAD OF core's IF-CHAIN
 --------------------------------------
-`core/mcp_server.py` lists 6 tools in `list_tools` and dispatches them in an if-chain
-in `call_core`. Everything else here mirrors that file -- `run`, `main`, the
-`@server.list_tools()` / `@server.call_tool()` pair, the stdio transport, the
-`InitializationOptions` block, and the `{"ok": false, ...}` error envelope. The
+The pre-merge read server (`core/mcp_server.py`, since replaced by `read_mcp.py`) listed
+its tools in `list_tools` and dispatched them in an if-chain. Everything else here still
+mirrors that shape -- `run`, `main`, the `@server.list_tools()` / `@server.call_tool()`
+pair, the stdio transport, the `InitializationOptions` block, and the error envelope --
+which is why roughly half of `main()` is duplicated between the two adapters today. The
 dispatch is the one deviation: past a dozen tools the schema and the call site are two lists
-that have to agree about 17 names, and a table makes them one list. That is the same
+that have to agree about every name, and a table makes them one list. That is the same
 argument `find_key` won in `cookjohn.py` -- two copies of one fact is the defect this
 package was built to end -- and it is also what keeps `call_tool` under ruff's
 complexity ceiling.
 
 `mcp` IS NOT A DEPENDENCY OF THE WRITE PATH
 ------------------------------------------
-It is imported inside `main()` and pinned behind the `mcp` extra, exactly as core does
-it. `cookjohn.py` states the reason: the client there is stdlib-only so it can be
-VENDORED into `calibre-zotero-jump`, a Calibre plugin running inside Calibre's
-embedded Python which cannot see a uv virtualenv. Making `mcp` a hard dependency would
-put an async runtime in that import path. `.importlinter` enforces this -- every module
-except this one is forbidden from importing `mcp`.
+It is imported inside `main()` and pinned behind the `mcp` extra. `dependencies = []` is
+what this protects: `omni-rag` imports the read path inside its ARC entrypoints, so making
+`mcp` a hard dependency would put an async runtime in the import path of every consumer
+that only wants to read a catalogue. `.importlinter` enforces it -- every module except
+this one and its sibling adapter is forbidden from importing `mcp`.
+
+⚠ This used to cite `cookjohn.py`, "stdlib-only so it can be VENDORED into
+`calibre-zotero-jump`". That premise is false — nothing is vendored there, and that module
+imports `zotero_core.domain.*` at module scope. The rule is unchanged; only its reason was
+wrong.
 """
 
 from __future__ import annotations

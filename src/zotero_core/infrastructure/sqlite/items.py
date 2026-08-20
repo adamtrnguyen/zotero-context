@@ -1,6 +1,6 @@
 """Read-only item-state lookups: existence, trash state, type, parents, children.
 
-Exists to serve the WRITE gate in `../../../../writes` without putting any SQL
+Exists to serve the WRITE gate in `application/services/` without putting any SQL
 there. Every precondition a write needs is a read -- does this key resolve, is it
 already in the trash, what type is it, what hangs off it -- and ZoteroSuite's rule
 is that consumers do not duplicate Zotero SQL (README, "Rules of the road"). So

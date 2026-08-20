@@ -54,6 +54,9 @@ PUBLISHED = (
     # The composition root, published because the verbs now REQUIRE a session.
     "build_write_session",
     "build_context",
+    "WriteBlocked",
+    "Reason",
+    "ALL_REASONS",
 )
 
 
@@ -90,6 +93,9 @@ def test_the_public_surface_is_enough_for_the_known_consumers():
         # `ZoteroContext` never left the surface, so a name-resolution test saw nothing
         # wrong. A type you cannot construct is not a usable export.
         "build_context",
+    "WriteBlocked",
+    "Reason",
+    "ALL_REASONS",
     ):
         assert hasattr(zotero_core, name), f"{name} left the public surface"
 
@@ -109,8 +115,14 @@ def test_the_public_surface_is_enough_to_write():
     names it actually uses.
     """
     for name in (
+        # a published way to write needs a published way to catch
+        "WriteBlocked",
+        "Reason",
         "build_write_session",
     "build_context",
+    "WriteBlocked",
+    "Reason",
+    "ALL_REASONS",
         "CookjohnClient",
         "import_attachment",
         "update_metadata",

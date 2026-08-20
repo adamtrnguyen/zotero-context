@@ -9,9 +9,12 @@ WHY NOT rapidfuzz
 -----------------
 `calfuzz` (CalibreSuite) uses it and measures 97% recall against 69% for substring
 matching. It is the better library. It is also a C extension, and this package has
-`dependencies = []` on purpose -- `calibre-zotero-jump` vendors part of it into Calibre's
-embedded Python, which cannot see a uv virtualenv. `difflib` is stdlib and gets most of
-the way; see `fuzzy_score` for the algorithm and its measured behaviour.
+`dependencies = []` on purpose. `difflib` is stdlib and gets most of the way; see
+`fuzzy_score` for the algorithm and its measured behaviour.
+
+⚠ This used to justify the constraint with "`calibre-zotero-jump` vendors part of it into
+Calibre's embedded Python". It vendors NOTHING from this package -- its `ui.py` contains no
+fuzzy or normaliser code at all, and its `build.sh` zips three files, none of them ours.
 """
 
 from __future__ import annotations

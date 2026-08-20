@@ -1,26 +1,38 @@
 # zotero-core
 
-> ℹ **Merged 2026-08-19.** This was `writes/README.md`, when the write surface was its
-> own distribution. It is now the `zotero_core.write` layer; module paths below have been
-> updated, and the argument for keeping it a separate package is answered in
-> `src/zotero_core/write/__init__.py`.
+> ℹ **Merged 2026-08-19.** This was `writes/README.md`, when the write surface was its own
+> distribution. It became the `zotero_core.write` layer, and on 2026-08-20 that layer became
+> **`zotero_core.application`** — the verbs live in `application/services/`, the transports
+> and the journal moved to `infrastructure/`, and the error vocabulary to `domain/errors.py`.
+> `src/zotero_core/write/` no longer exists.
 
 
 The one CRUD surface for the local Zotero library. Everything that mutates Zotero
 goes through here, and **the caller never picks a transport.**
 
 ```python
-from zotero_core.write import create_item, add_tags, trash_items, restore_items, WriteBlocked
+from zotero_core import WriteBlocked, build_write_session
+from zotero_core.application.services.verbs import (
+    add_tags,
+    create_item,
+    restore_items,
+    trash_items,
+)
+
+# ONE session per operation, assembled by the composition root. Every verb requires it —
+# they used to default to `linker or LinkerClient()` internally, which is what put a
+# concrete adapter inside the application layer.
+session = build_write_session()
 
 try:
-    item = create_item("book", {"title": "Systems Thinking"}, calibre_uuid=uuid)
-    add_tags(item["item_key"], ["systems", "to-read"])
+    item = create_item("book", {"title": "Systems Thinking"}, calibre_uuid=uuid, session=session)
+    add_tags(item["item_key"], ["systems", "to-read"], session=session)
 except WriteBlocked as e:
     print(e.code, e.reason)   # e.g. "duplicate_item", plus prose
     print(e.as_dict())        # the shape an MCP tool returns
 
-trash_items([item["item_key"]])          # recoverable
-restore_items([item["item_key"]])        # the inverse, always available
+trash_items([item["item_key"]], session=session)          # recoverable
+restore_items([item["item_key"]], session=session)        # the inverse, always available
 ```
 
 ## Why it exists
@@ -48,7 +60,7 @@ scattered places instead of three.
 ## Where it lives, and what `core/` is
 
 **`core/` is not the single Zotero owner. It is the read half; this is the write
-half.** The dependency runs `zotero_core.write` → `zotero_core.infrastructure`, never the reverse,
+half.** ⚠ THE DIRECTION INVERTED on 2026-08-20: `interfaces > infrastructure > application > domain`,
 and `core/`'s "read-only forever" contract is **unamended**.
 
 The alternative was amending that contract so one package owned everything, with
@@ -84,7 +96,7 @@ plugin name into its parameter names.
 
 ```bash
 uv sync --extra mcp
-zotero-core-write-mcp          # stdio server, 17 tools
+zotero-core-write-mcp          # stdio server; `len(write_mcp.TOOLS)` for the count
 ```
 
 Every verb above, one tool each (`zotero_trash_items`, `zotero_set_tags`, …), plus
@@ -107,7 +119,8 @@ Three things it deliberately does not expose:
 - **`journal_dir`** — the journal is only an audit trail if every write lands in one
   place.
 
-`force` *is* exposed wherever a verb has it, defaulting to False in all six schemas; a
+`force` *is* exposed wherever a verb has it, defaulting to False in every schema that has
+it; a
 test asserts no schema ships it defaulted to True, and another asserts every verb that
 has the gate exposes it. A `WriteBlocked` comes back as `as_dict()` — `{"ok": false,
 "code", "reason", "detail"}` — so a caller branches on `code` instead of parsing a
@@ -115,8 +128,13 @@ traceback.
 
 `mcp` is behind the extra and imported inside `main()`, never at module level. That is
 the same pin core uses (`mcp>=1.26.0,<2` — 2.0.0 removed `@server.list_tools()`), and
-`.importlinter` forbids every other module from importing it, because `cookjohn.py` is
-stdlib-only so it can be vendored into `calibre-zotero-jump`.
+`.importlinter` forbids every other module from importing it, because `dependencies = []`
+is the promise this package makes — `omni-rag` imports it inside ARC entrypoints, where an
+async runtime pulled in by a tag verb is a real cost.
+
+⚠ This used to say "because `cookjohn.py` is stdlib-only so it can be vendored into
+`calibre-zotero-jump`". Nothing is vendored there (checked 2026-08-19), and that module
+imports `zotero_core.domain.*` anyway.
 
 ## What is enforced
 
@@ -237,7 +255,7 @@ throwaway item created for the purpose (`UUV3HWD2`, linked attachment `MAQ3PAG9`
 
 ```bash
 just qa              # from the repo root: lint + types + layering + sprawl + tests
-uv run pytest        # 207 tests
+uv run pytest        # pytest prints the count; it is not written down here
 ```
 
 Both plugins and the database are stubbed, and the fakes *apply* their writes to the

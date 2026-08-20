@@ -2,7 +2,7 @@
 
 This module is deliberately dumb. It knows how to reach the plugin and how to
 turn its replies into exceptions; it knows nothing about what a valid write is.
-Every precondition lives in `writes.py`, so there is one place to read to find
+Every precondition lives in `application/services/verbs.py`, so there is one place to read to find
 out what is enforced.
 
 WHY THE PLUGIN AND NOT SOMETHING ELSE
