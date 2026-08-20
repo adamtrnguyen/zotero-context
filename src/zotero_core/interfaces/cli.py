@@ -1,17 +1,16 @@
 from __future__ import annotations
 
 import argparse
-import json
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 from zotero_core.application.services.context import ZoteroContext
-from zotero_core.domain.entities.models import to_jsonable
 from zotero_core.infrastructure.http.bbt import DEFAULT_BBT_RPC_URL
 from zotero_core.infrastructure.http.bridge import DEFAULT_BRIDGE_URL
 from zotero_core.infrastructure.sqlite.annotations import DEFAULT_ZOTERO_DB
 from zotero_core.interfaces.factory import build_context
+from zotero_core.interfaces.rendering import render_json
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -224,13 +223,13 @@ def parse_types(value: str) -> set[str] | None:
 
 
 def print_json(payload: Any, *, pretty: bool = False) -> None:
-    print(
-        json.dumps(
-            to_jsonable(payload),
-            indent=2 if pretty else None,
-            ensure_ascii=False,
-        )
-    )
+    """Print a result. Serialisation is `rendering.render_json`, shared with both adapters.
+
+    ⚠ This used to call `json.dumps` itself, WITHOUT `default=str` -- so a value the domain
+    does not model (a `Path`, a `datetime` in a `WriteBlocked.detail`) raised here while the
+    write adapter, which had the fallback, survived the identical payload.
+    """
+    print(render_json(payload, indent=2 if pretty else None))
 
 
 if __name__ == "__main__":

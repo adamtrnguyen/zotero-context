@@ -32,17 +32,16 @@ one typo.
 from __future__ import annotations
 
 import asyncio
-import json
 import os
 import sqlite3
 from typing import Any
 
 from zotero_core.application.services.context import ZoteroContext
 from zotero_core.domain.annotation_type import ANNOTATION_TYPE_NAMES
-from zotero_core.domain.entities.models import to_jsonable
 from zotero_core.infrastructure.http.bridge import ZoteroBridgeError
 from zotero_core.infrastructure.sqlite.connect import ZoteroReadError
 from zotero_core.interfaces.factory import build_context
+from zotero_core.interfaces.rendering import render_json
 from zotero_core.interfaces.tool_spec import ToolSpec as _ToolSpec
 from zotero_core.interfaces.tool_spec import dispatch as _dispatch
 
@@ -619,12 +618,10 @@ async def main() -> None:
     async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextContent]:
         try:
             payload = call_read(name, arguments or {})
-            text = json.dumps(to_jsonable(payload), ensure_ascii=False, indent=2)
+            text = render_json(payload)
         except Exception as exc:
-            text = json.dumps(
-                {"ok": False, "code": error_code(exc), "error": str(exc)},
-                ensure_ascii=False,
-                indent=2,
+            text = render_json(
+                {"ok": False, "code": error_code(exc), "error": str(exc)}
             )
         return [types.TextContent(type="text", text=text)]
 

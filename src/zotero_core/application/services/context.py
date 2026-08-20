@@ -228,8 +228,14 @@ class ZoteroContext:
         }
 
     def trash_count(self) -> dict:
-        """How many items are in the trash. Had ZERO call sites anywhere before now."""
-        return {"trashed": self.items.trashed_count()}
+        """How many items are in the trash, in the same envelope as every other read.
+
+        ⚠ Returned `{"trashed": N}` — no `count`, no `read_mode` — while five of the seven
+        sibling reads returned both. A caller could not tell a live count from a snapshot
+        one, and could not read this envelope the way it reads the others.
+        """
+        count, read_mode = self.items.trashed_count()
+        return {"count": count, "read_mode": read_mode}
 
     def collection_tree(self, *, library_id: int | None = None) -> dict:
         """The whole collection tree, nested, with breadcrumb paths and item counts."""
@@ -370,10 +376,26 @@ class ZoteroContext:
             "text": text[:max_chars],
         }
 
-    def get_sources_with_annotations(self, *, include_citekeys: bool = True) -> list[ZoteroSource]:
+    def get_sources_with_annotations(self, *, include_citekeys: bool = True) -> dict:
+        """Sources carrying annotations, in the standard envelope.
+
+        ⚠ Returned a BARE LIST, which cannot carry a `read_mode` at all — so this was the
+        one read in the package that could not say whether it had been served live or from
+        an `immutable=1` snapshot. The annotation store already recorded it in
+        `last_read_mode`; nothing outside the tests ever read it.
+        """
         sources = self.annotations.get_sources_with_annotations()
-        if not include_citekeys:
-            return sources
+        if include_citekeys:
+            sources = self._with_citekeys(sources)
+        return {
+            "count": len(sources),
+            "read_mode": self.annotations.last_read_mode,
+            "sources": list(sources),
+        }
+
+    def _with_citekeys(self, sources: list[ZoteroSource]) -> list[ZoteroSource]:
+        """Better BibTeX keys, joined on. Split out so the envelope above reads as one
+        thing rather than as two returns with a branch between them."""
         citekeys = self.bbt.citation_keys([source.parent_key for source in sources])
         return [
             ZoteroSource(

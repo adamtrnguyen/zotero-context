@@ -153,3 +153,58 @@ class _FakeResponse:
 
     def __exit__(self, *_exc):
         return False
+
+
+# --------------------------------------------------------------------------
+# rendering -- one serialiser, because the three copies disagreed
+# --------------------------------------------------------------------------
+
+
+class _Unserialisable:
+    """A value `json.dumps` cannot handle and `to_jsonable` does not model."""
+
+    def __repr__(self) -> str:
+        return "<unserialisable>"
+
+
+def test_an_unserialisable_value_survives_every_surface():
+    """THE ASYMMETRY THIS CLOSES.
+
+    `json.dumps` was called at three sites and only ONE passed `default=str`:
+
+        write_mcp._render   default=str        survived
+        cli.print_json      (none)             raised
+        read_mcp inline     (none)             raised
+
+    So the same payload killed the read adapter and was survived by the write adapter.
+    A `Path` or a `datetime` in a `WriteBlocked.detail` is enough to hit it -- `detail` is
+    whatever the gate put there, which is precisely what the domain does not model.
+
+    All three go through `render_json` now. This asserts the property directly rather than
+    asserting that they share a function, because sharing is the mechanism and surviving is
+    the point.
+    """
+    from zotero_core.interfaces.rendering import render_json
+
+    payload = {"ok": False, "detail": {"odd": _Unserialisable()}}
+    rendered = render_json(payload)
+    assert "unserialisable" in rendered
+
+
+def test_the_write_adapter_and_the_read_adapter_render_identically():
+    """Both adapters and the CLI must degrade the SAME way, or a caller debugging one is
+    reading a different failure mode from the other."""
+    from zotero_core.interfaces.rendering import render_json
+    from zotero_core.interfaces.write_mcp import _render
+
+    payload = {"detail": {"odd": _Unserialisable()}}
+    assert _render(payload) == render_json(payload)
+
+
+def test_the_cli_compact_form_is_still_compact():
+    """`print_json` without `--pretty` emits `indent=None`; routing it through the shared
+    renderer must not silently start pretty-printing every CLI result."""
+    from zotero_core.interfaces.rendering import render_json
+
+    assert "\n" not in render_json({"a": 1, "b": 2}, indent=None)
+    assert "\n" in render_json({"a": 1, "b": 2})

@@ -162,13 +162,21 @@ class ZoteroItemStore:
             out.setdefault(parent_key, []).append(child_key)
         return out
 
-    def trashed_count(self) -> int:
-        """How many items are in the trash. Cheap sanity signal around a write."""
-        conn, _ = self._connect()
+    def trashed_count(self) -> tuple[int, str]:
+        """How many items are in the trash, AND the read mode that served the count.
+
+        ⚠ The mode used to be discarded — `conn, _ = self._connect()`. Every other read in
+        this package reports which mode answered it, and a trash count is exactly the kind
+        of answer where it matters: under an `immutable=1` snapshot the number can predate
+        a purge that has already happened, and a caller comparing it around a write would
+        read that as the write having done nothing.
+        """
+        conn, read_mode = self._connect()
         try:
-            return int(conn.execute("SELECT COUNT(*) FROM deletedItems").fetchone()[0])
+            count = int(conn.execute("SELECT COUNT(*) FROM deletedItems").fetchone()[0])
         finally:
             conn.close()
+        return count, read_mode
 
     # ----------------------------------------------------------------------
     # prior state, for writes that overwrite rather than add

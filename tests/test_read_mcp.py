@@ -264,7 +264,21 @@ def test_get_zotero_trash_count(wired, ctx):
     wired.add("AAAA1111")
     wired.add("BBBB2222")
     wired.trash("BBBB2222")
-    assert read_mcp.call_read("get_zotero_trash_count", {}, ctx=ctx)["trashed"] == 1
+    out = read_mcp.call_read("get_zotero_trash_count", {}, ctx=ctx)
+    assert out["count"] == 1
+    # ⚠ Was `["trashed"]`, with no `read_mode` in the envelope at all. This read is exactly
+    # where the mode matters: under an `immutable=1` snapshot the number can predate a
+    # purge that already happened, and a caller comparing it around a write would read that
+    # as the write having done nothing.
+    assert out["read_mode"] in {"mode=ro", "immutable=1"}
+
+
+def test_get_zotero_sources_carries_a_read_mode(wired, ctx):
+    """It returned a BARE LIST, which cannot carry one — the only read in the package that
+    could not say whether it was served live or from a snapshot."""
+    out = read_mcp.call_read("get_zotero_sources", {"include_citekeys": False}, ctx=ctx)
+    assert out["count"] == len(out["sources"])
+    assert out["read_mode"] in {"mode=ro", "immutable=1"}
 
 
 # --------------------------------------------------------------------------

@@ -65,10 +65,10 @@ except this one is forbidden from importing `mcp`.
 from __future__ import annotations
 
 import asyncio
-import json
 from typing import Any
 
 from zotero_core import __version__
+from zotero_core.application.results import ok
 from zotero_core.application.services.collections import (
     add_items_to_collection,
     create_collection,
@@ -95,9 +95,9 @@ from zotero_core.application.services.verbs import (
     update_metadata,
     write_note,
 )
-from zotero_core.domain.entities.models import to_jsonable
 from zotero_core.domain.errors import WriteBlocked
 from zotero_core.interfaces.factory import build_write_session
+from zotero_core.interfaces.rendering import render_json
 from zotero_core.interfaces.tool_spec import WriteToolSpec as _ToolSpec
 from zotero_core.interfaces.tool_spec import dispatch as _dispatch
 
@@ -136,12 +136,16 @@ _COPY_DB = {
 def list_undo(limit: int = 25, *, session: WriteSession) -> dict:
     """The write journal, newest first, with why each entry can or cannot be replayed."""
     entries = _list_entries(limit=limit, journal=session.journal)
-    return {
-        "ok": True,
-        "op": "list_undo",
-        "count": len(entries),
-        "replayable": sum(1 for e in entries if e.replayable),
-        "entries": [
+    # Through `ok()`, not hand-built. This return used to spell the frame out itself and
+    # OMITTED `transport` — the field `ok()` validates against `TRANSPORTS` and the first
+    # thing anyone debugging a write reads. `"none"` is the honest value: listing the
+    # journal touches no plugin.
+    return ok(
+        "list_undo",
+        transport="none",
+        count=len(entries),
+        replayable=sum(1 for e in entries if e.replayable),
+        entries=[
             {
                 "manifest": e.path,
                 "op": e.op,
@@ -152,7 +156,7 @@ def list_undo(limit: int = 25, *, session: WriteSession) -> dict:
             }
             for e in entries
         ],
-    }
+    )
 
 
 def undo_write(
@@ -174,9 +178,20 @@ def preflight(item_keys: list[str] | None = None, *, session: WriteSession) -> d
     exports for exactly this purpose ("gates, exposed so a caller can pre-flight
     without writing"). Nothing here mutates anything.
     """
+    # ⚠ NOT built by `results.ok()`, deliberately, and this is the one place that is the
+    # right call. `ok()` hardcodes `"ok": True` because it is a SUCCESS envelope — it says
+    # a write happened. Preflight's `ok` is a HEALTH VERDICT: it flips to False below when
+    # a plugin does not answer, and nothing was attempted either way. Routing it through
+    # `ok()` would need the builder to grow a way to say False, which would let a genuine
+    # write claim success while reporting failure.
+    #
+    # `transport` IS added, which is what the audit actually found missing: it is the field
+    # `ok()` validates and the first thing anyone reads, and `"both"` is honest here —
+    # preflight probes each plugin separately, which is its entire purpose.
     report: dict[str, Any] = {
         "ok": True,
         "op": "preflight",
+        "transport": "both",
         "zotero_running": session.probe.is_running(),
         "probe": session.probe.url,
         "transports": {},
@@ -668,12 +683,10 @@ async def main() -> None:
 
 
 def _render(payload: Any) -> str:
-    """Serialise a result. `default=str` so an unexpected type cannot kill the server.
+    """Serialise a result. Delegates to `rendering.render_json`.
 
-    `to_jsonable` handles the shapes core returns -- dataclasses, tuples, nested dicts.
-    A write result is already plain data, but `detail` on a `WriteBlocked` is whatever
-    the gate put there, so this is the one place an un-serialisable value could reach
-    the wire. Falling back to `str` degrades one field; raising here would drop the
-    whole response and tell the caller nothing.
+    This was the ONLY one of three copies carrying `default=str`, so the reasoning that
+    used to live here now lives with the shared implementation — where the read adapter
+    and the CLI get it too.
     """
-    return json.dumps(to_jsonable(payload), ensure_ascii=False, indent=2, default=str)
+    return render_json(payload)
