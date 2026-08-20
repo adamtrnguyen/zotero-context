@@ -3,23 +3,11 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
-from zotero_core.domain.annotation_type import ANNOTATION_TYPE as ANNOTATION_TYPE  # re-export
 from zotero_core.domain.annotation_type import label_for
 from zotero_core.domain.entities.models import Annotation, ZoteroSource
-from zotero_core.infrastructure.sqlite.connect import (
-    DEFAULT_BUSY_TIMEOUT_MS,
-    ZoteroReadError,
-    open_readonly,
-)
+from zotero_core.infrastructure.sqlite.connect import DEFAULT_BUSY_TIMEOUT_MS, open_readonly
 
 DEFAULT_ZOTERO_DB = Path.home() / "Zotero" / "zotero.sqlite"
-
-# Re-exported from the domain so the name keeps resolving here -- tests and the
-# MCP adapter both import it from this module. The declaration is one place now.
-
-
-# Back-compat alias; the real definition (and the reason it moved) is in connect.py.
-ZoteroAnnotationError = ZoteroReadError
 
 
 class ZoteroAnnotationStore:

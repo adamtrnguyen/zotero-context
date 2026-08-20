@@ -20,9 +20,10 @@ import sqlite3
 
 import pytest
 
+from zotero_core.domain.annotation_type import ANNOTATION_TYPE
 from zotero_core.infrastructure.http.bridge import ZoteroBridgeError
 from zotero_core.infrastructure.service import ZoteroContext
-from zotero_core.infrastructure.sqlite.annotations import ANNOTATION_TYPE, ZoteroAnnotationError
+from zotero_core.infrastructure.sqlite.connect import ZoteroReadError
 from zotero_core.interfaces import read_mcp
 
 
@@ -268,23 +269,46 @@ def test_annotation_reads_go_through_the_one_opener_and_record_the_mode(zotero):
     assert store.last_read_mode in {"mode=ro", "immutable=1"}
 
 
-def test_the_annotation_error_name_still_resolves(zotero):
-    """It moved to connect.py (it is raised for "cannot open the database", not for
-    anything about annotations) and is aliased, because the old name is caught in
-    several places."""
-    from zotero_core.infrastructure.sqlite.annotations import ZoteroAnnotationError
-    from zotero_core.infrastructure.sqlite.connect import ZoteroReadError
+def test_the_annotation_error_alias_is_gone(zotero):
+    """WAS `test_the_annotation_error_name_still_resolves`, asserting the alias held.
 
-    assert ZoteroAnnotationError is ZoteroReadError
+    The alias is removed. It was not a harmless name: `_CODES` matched on it and read as
+    annotation-scoped while resolving to the class EVERY store raises, so a missing
+    database via `collection_tree` came back as `annotation_read_failed`. The test below
+    pins the corrected behaviour; this one stops the name coming back.
+    """
+    from zotero_core.infrastructure.sqlite import annotations
+
+    assert not hasattr(annotations, "ZoteroAnnotationError")
+    assert not hasattr(annotations, "ANNOTATION_TYPE")
 
 
 def test_failures_carry_a_code_a_caller_can_branch_on():
     """A locked database, a missing key and a closed Zotero used to be one string."""
     assert read_mcp.error_code(ZoteroBridgeError("down")) == "bridge_unreachable"
-    assert read_mcp.error_code(ZoteroAnnotationError("bad")) == "annotation_read_failed"
+    assert read_mcp.error_code(ZoteroReadError("no db")) == "database_unavailable"
     assert read_mcp.error_code(sqlite3.OperationalError("locked")) == "database_unavailable"
     assert read_mcp.error_code(ValueError("nope")) == "bad_arguments"
     assert read_mcp.error_code(RuntimeError("?")) == "error"
+
+
+def test_a_non_annotation_read_failure_is_not_labelled_an_annotation_failure(tmp_path):
+    """THE REGRESSION. Measured before the fix:
+
+        collection_tree -> ZoteroReadError -> 'annotation_read_failed'
+        list_libraries  -> ZoteroReadError -> 'annotation_read_failed'
+
+    Every store calls `open_readonly`, so the one class covers all of them; the alias is
+    what made an annotation-specific code look correct at the call site.
+    """
+    from zotero_core.infrastructure.sqlite.collections import ZoteroCollectionStore
+    from zotero_core.infrastructure.sqlite.libraries import list_libraries
+
+    absent = str(tmp_path / "absent.sqlite")
+    for call in (lambda: ZoteroCollectionStore(absent).tree(), lambda: list_libraries(absent)):
+        with pytest.raises(ZoteroReadError) as caught:
+            call()
+        assert read_mcp.error_code(caught.value) == "database_unavailable"
 
 
 # --------------------------------------------------------------------------

@@ -54,12 +54,13 @@ def test_the_schema_list_is_derived_not_transcribed():
     assert ANNOTATION_TYPE_NAMES == tuple(t.label for t in AnnotationType)
 
 
-def test_the_legacy_dict_shape_still_resolves_where_it_did():
-    """`read.annotations.ANNOTATION_TYPE` is imported by name in the test suite and by the
-    MCP adapter; the declaration moved, the name did not."""
-    from zotero_core.infrastructure.sqlite import annotations
-
-    assert annotations.ANNOTATION_TYPE is ANNOTATION_TYPE
+def test_the_dict_shape_is_declared_once_in_the_domain():
+    """WAS `test_the_legacy_dict_shape_still_resolves_where_it_did`, which pinned a
+    re-export in `sqlite/annotations.py` on the grounds that the name was "imported by
+    name in the test suite and by the MCP adapter". Only the first half was true -- the
+    adapter imports `ZoteroAnnotationError` from that module, never `ANNOTATION_TYPE` --
+    so the shim existed for its own tests. Removed; the domain is the one declaration.
+    """
     assert ANNOTATION_TYPE == {1: "highlight", 2: "note", 3: "image", 4: "ink",
                                5: "underline", 6: "text"}
 

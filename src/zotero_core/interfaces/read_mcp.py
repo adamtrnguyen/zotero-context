@@ -41,7 +41,7 @@ from zotero_core.domain.annotation_type import ANNOTATION_TYPE_NAMES
 from zotero_core.domain.entities.models import to_jsonable
 from zotero_core.infrastructure.http.bridge import ZoteroBridgeError
 from zotero_core.infrastructure.service import ZoteroContext
-from zotero_core.infrastructure.sqlite.annotations import ZoteroAnnotationError
+from zotero_core.infrastructure.sqlite.connect import ZoteroReadError
 from zotero_core.interfaces.tool_spec import ToolSpec as _ToolSpec
 from zotero_core.interfaces.tool_spec import dispatch as _dispatch
 
@@ -500,7 +500,12 @@ _BY_NAME = {spec.name: spec for spec in TOOLS}
 # every failure flattened to {"ok": false, "error": str(exc)} with no code to branch on.
 _CODES: tuple[tuple[type[BaseException], str], ...] = (
     (ZoteroBridgeError, "bridge_unreachable"),
-    (ZoteroAnnotationError, "annotation_read_failed"),
+    # ⚠ WAS `(ZoteroAnnotationError, "annotation_read_failed")`. That alias resolved to
+    # `ZoteroReadError`, which every store raises, so a missing database reached through
+    # `collection_tree` or `list_libraries` was reported to the client as an ANNOTATION
+    # failure. Same class, honest name, and the code now says what actually happened --
+    # which is the same thing `sqlite3.OperationalError` means, so they share it.
+    (ZoteroReadError, "database_unavailable"),
     (sqlite3.OperationalError, "database_unavailable"),
     (ValueError, "bad_arguments"),
 )

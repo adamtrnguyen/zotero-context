@@ -51,7 +51,10 @@ class AnnotationType(int, Enum):
 #: out — the third copy was a hand-maintained tuple that nothing kept in step.
 ANNOTATION_TYPE_NAMES: tuple[str, ...] = tuple(t.label for t in AnnotationType)
 
-#: Back-compat: the shape `read/annotations.py` exported and tests import by name.
+#: The `{id: name}` shape, derived from the enum rather than typed out a second time.
+#: ⚠ This was labelled "Back-compat: the shape `read/annotations.py` exported" while that
+#: module re-exported it. The re-export is gone -- it served only its own tests, since the
+#: MCP adapter imports the ERROR from there, never this -- so this is simply the mapping.
 ANNOTATION_TYPE: dict[int, str] = {int(t): t.label for t in AnnotationType}
 
 

@@ -628,9 +628,9 @@ def test_an_empty_lookup_costs_no_connection(zotero):
 def test_a_missing_database_is_an_error_not_an_empty_answer(tmp_path):
     """Silently reporting 'no items exist' for an absent database would make every
     existence gate pass vacuously."""
-    from zotero_core.infrastructure.sqlite.annotations import ZoteroAnnotationError
+    from zotero_core.infrastructure.sqlite.connect import ZoteroReadError
 
-    with pytest.raises(ZoteroAnnotationError):
+    with pytest.raises(ZoteroReadError):
         ZoteroItemStore(tmp_path / "absent.sqlite").item_states(["ABCD2345"])
 
 

@@ -36,10 +36,20 @@ class ZoteroReadError(RuntimeError):
     it, so importing an exception upward from `annotations` made a cycle the moment
     `annotations` needed the shared opener.
 
-    `annotations.ZoteroAnnotationError` is kept as an alias -- the name is exported and
-    caught in several places, and it is not worth breaking. It was always a misnomer:
-    it is raised for "cannot open the database", which has nothing to do with
-    annotations.
+    ⚠ THE `annotations.ZoteroAnnotationError` ALIAS IS GONE, and removing it fixed a
+    live mislabel rather than just tidying a name. This docstring already admitted the
+    alias "was always a misnomer: it is raised for 'cannot open the database', which has
+    nothing to do with annotations" -- and then kept it because it was "not worth
+    breaking". What that hid: `read_mcp._CODES` listed
+    `(ZoteroAnnotationError, "annotation_read_failed")`, which READS as annotation-scoped
+    but, being this class, matched every failure from all seven stores. Measured
+    2026-08-19 against a missing database:
+
+        collection_tree  -> ZoteroReadError -> code 'annotation_read_failed'
+        list_libraries   -> ZoteroReadError -> code 'annotation_read_failed'
+
+    An alias is not free when something branches on the type: it makes a wrong branch
+    look right at the call site.
     """
 
 
