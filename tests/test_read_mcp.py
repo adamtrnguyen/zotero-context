@@ -533,3 +533,26 @@ def test_tags_are_scoped_to_one_library(zotero, ctx):
     names = {t["name"] for t in ctx.tags()["tags"]}
     assert "local" in names
     assert "remote" not in names, "tag vocabulary is leaking across libraries"
+
+
+def test_a_bridge_that_ERRORS_is_not_reported_as_unreachable(monkeypatch):
+    """⚠ An HTTPError means the bridge ANSWERED. It was reported as "not reachable at
+    {url}", which sends you to check whether Zotero is running when the plugin has already
+    said what went wrong — and the plugin's `{"ok": false, "error": ...}` body was read by
+    nobody. `transports/linker.py` gets this right and its docstring explains why."""
+    import io
+    import urllib.error
+
+    from zotero_core.infrastructure.http.bridge import ZoteroBridgeClient, ZoteroBridgeError
+
+    body = io.BytesIO(b'{"ok": false, "error": "no browser window is open"}')
+
+    def _raise(*_a, **_k):
+        raise urllib.error.HTTPError("http://x/window-state", 500, "Server Error", {}, body)
+
+    monkeypatch.setattr("urllib.request.urlopen", _raise)
+    with pytest.raises(ZoteroBridgeError) as e:
+        ZoteroBridgeClient().get_window_state_raw()
+
+    assert "no browser window is open" in str(e.value), "the plugin's reason was discarded"
+    assert "not reachable" not in str(e.value), "an answering bridge called unreachable"

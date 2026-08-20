@@ -15,8 +15,16 @@ The four channels into local Zotero, from docs/DESIGN.md:
   * in-process plugin JS — the only channel with unrestricted local writes
 
 So the plugin is not a preference, it is the only door. `linker/bootstrap.js`
-v0.3.0 registers `trash-items` and `restore-items` on it and has had ZERO
-consumers since it shipped; this package is the client it was missing.
+v0.3.0 registers `trash-items` and `restore-items` on it, and this package is the client
+it was missing. ⚠ This used to end "and has had ZERO consumers since it shipped" — that is
+now FALSE: `verbs.py` consumes both (`trash_items`, `restore_items`). The sentence outlived
+the gap it described.
+
+⚠ NOTHING CHECKS THE PLUGIN VERSION. `ping()` verifies only `plugin == "zotero-linker"`, so
+a 0.1.0 or 0.2.0 install passes liveness and then 404s at the POST — reported as
+LINKER_REFUSED ("the plugin considered this invalid") rather than "your plugin is stale",
+because the two are indistinguishable from here. The `version` in `info` is carried into
+every result and compared against nothing.
 
 READING ERRORS OUT OF urllib
 ----------------------------

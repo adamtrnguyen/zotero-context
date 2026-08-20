@@ -39,7 +39,23 @@ class ZoteroBridgeClient:
         try:
             with urllib.request.urlopen(self.url, timeout=self.timeout) as response:
                 payload = json.load(response)
-        except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError) as exc:
+        except urllib.error.HTTPError as exc:
+            # ⚠ AN HTTPError MEANS THE BRIDGE ANSWERED, and this used to report it as "not
+            # reachable at {url}" -- which is false, and sends you to check whether Zotero
+            # is running when the plugin already told you what went wrong. The plugin
+            # returns `{"ok": false, "error": ...}` with a 500 (`bridge/bootstrap.js`), and
+            # that body was being discarded unread. `transports/linker.py` gets this right
+            # and its docstring explains why; the two now agree.
+            detail = ""
+            try:
+                body = json.loads(exc.read().decode("utf-8", "replace"))
+                detail = body.get("error") or ""
+            except Exception:  # noqa: BLE001 - a non-JSON body is still worth the status
+                pass
+            raise ZoteroBridgeError(
+                f"Zotero bridge returned HTTP {exc.code}: {detail or exc.reason}"
+            ) from exc
+        except (urllib.error.URLError, TimeoutError) as exc:
             raise ZoteroBridgeError(f"Zotero bridge is not reachable at {self.url}: {exc}") from exc
         if not isinstance(payload, dict):
             raise ZoteroBridgeError("Zotero bridge returned a non-object payload")
