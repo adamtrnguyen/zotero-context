@@ -20,6 +20,7 @@ from pathlib import Path
 
 import pytest
 
+from zotero_core.domain.read_mode import ReadMode
 from zotero_core.read.items import ZoteroItemStore
 from zotero_core.write import (
     ALL_REASONS,
@@ -473,7 +474,7 @@ def test_a_snapshot_read_reports_unverified_rather_than_failed(zotero, monkeypat
     zotero.add("ABCD2345", "A Paper")
     store = zotero.store()
     real_connect = store._connect
-    monkeypatch.setattr(store, "_connect", lambda: (real_connect()[0], "immutable=1"))
+    monkeypatch.setattr(store, "_connect", lambda: (real_connect()[0], ReadMode.SNAPSHOT))
 
     out = trash_items(["ABCD2345"], store=store, linker=FakeLinker(zotero, apply=False))
     assert out["ok"] is True

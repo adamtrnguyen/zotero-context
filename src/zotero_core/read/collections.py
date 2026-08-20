@@ -38,6 +38,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from ..domain.read_mode import ReadMode
 from .annotations import DEFAULT_ZOTERO_DB
 from .connect import DEFAULT_BUSY_TIMEOUT_MS, USER_LIBRARY_ID, open_readonly
 
@@ -64,7 +65,7 @@ class CollectionNode:
 @dataclass(frozen=True)
 class CollectionTree:
     roots: tuple[CollectionNode, ...]
-    read_mode: str
+    read_mode: ReadMode
     truncated: bool = False
 
     def flat(self) -> tuple[CollectionNode, ...]:
@@ -91,7 +92,7 @@ class CollectionMember:
 class CollectionMembers:
     collection_key: str
     members: tuple[CollectionMember, ...]
-    read_mode: str
+    read_mode: ReadMode
 
     def __len__(self) -> int:
         return len(self.members)

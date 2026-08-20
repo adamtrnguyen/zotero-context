@@ -45,6 +45,7 @@ import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
 
+from ..domain.read_mode import ReadMode
 from .annotations import DEFAULT_ZOTERO_DB
 from .connect import DEFAULT_BUSY_TIMEOUT_MS, USER_LIBRARY_ID, open_readonly
 
@@ -70,7 +71,7 @@ class ItemStates:
     """A batch of lookups, plus which read mode produced them."""
 
     states: dict[str, ItemState]
-    read_mode: str
+    read_mode: ReadMode
 
     def __getitem__(self, key: str) -> ItemState:
         return self.states[key]
@@ -112,7 +113,7 @@ class ZoteroAttachments:
     """
 
     items: tuple[ZoteroAttachment, ...]
-    read_mode: str
+    read_mode: ReadMode
 
     def __len__(self) -> int:
         return len(self.items)
@@ -146,7 +147,7 @@ class ZoteroItemStore:
         """
         wanted = list(dict.fromkeys(keys))
         if not wanted:
-            return ItemStates(states={}, read_mode="none")
+            return ItemStates(states={}, read_mode=ReadMode.NONE)
 
         conn, mode = self._connect()
         try:
@@ -543,7 +544,7 @@ class ZoteroItemStore:
         info["file_exists"] = resolved.exists()
         return info
 
-    def _connect(self) -> tuple[sqlite3.Connection, str]:
+    def _connect(self) -> tuple[sqlite3.Connection, ReadMode]:
         """Delegates to `connect.open_readonly`.
 
         Kept as a method because it is the seam tests inject through, and because

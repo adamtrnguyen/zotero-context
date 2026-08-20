@@ -283,7 +283,7 @@ def create_item(
         "verified": bool(after[item_key].exists),
         "read_mode": after.read_mode,
     }
-    if not after[item_key].exists and after.read_mode == "mode=ro":
+    if not after[item_key].exists and not after.read_mode.is_snapshot:
         raise WriteBlocked(
             Reason.VERIFICATION_FAILED,
             f"write_item reported {item_key} but no such item is in the library",
@@ -1185,7 +1185,7 @@ def _trash_op(
 
     after = session.store.item_states(to_send)
     disagreed = [k for k in to_send if after[k].exists and after[k].trashed != want_trashed]
-    if disagreed and after.read_mode == "mode=ro":
+    if disagreed and not after.read_mode.is_snapshot:
         raise WriteBlocked(
             Reason.VERIFICATION_FAILED,
             f"the plugin reported success but {disagreed} did not change state",

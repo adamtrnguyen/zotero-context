@@ -22,6 +22,8 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
+from ..domain.read_mode import ReadMode
+
 
 # Zotero's own user library. Group libraries get their own ids; every query in this layer
 # is scoped, because an unscoped one silently mixes a group library into a personal count.
@@ -64,7 +66,7 @@ def open_readonly(
     db_path: str | Path,
     *,
     busy_timeout_ms: int = DEFAULT_BUSY_TIMEOUT_MS,
-) -> tuple[sqlite3.Connection, str]:
+) -> tuple[sqlite3.Connection, ReadMode]:
     """Open read-only, honest mode first. Returns the connection AND the mode that won."""
     path = Path(db_path)
     if not path.exists():
@@ -79,12 +81,12 @@ def open_readonly(
         # The probe won, so this really is a live read -- give the caller the full
         # timeout for the queries that follow, which is what it was always meant for.
         conn.execute(f"PRAGMA busy_timeout={int(busy_timeout_ms)}")
-        return conn, "mode=ro"
+        return conn, ReadMode.LIVE
     except sqlite3.Error:
         try:
             conn = sqlite3.connect(f"file:{path}?mode=ro&immutable=1", uri=True, timeout=5.0)
             conn.execute("SELECT 1 FROM items LIMIT 1").fetchone()
-            return conn, "immutable=1"
+            return conn, ReadMode.SNAPSHOT
         except sqlite3.Error as exc:
             raise ZoteroReadError(
                 f"Could not open Zotero database read-only: {exc}"
