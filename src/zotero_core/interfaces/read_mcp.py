@@ -347,7 +347,12 @@ TOOLS: tuple[_ToolSpec, ...] = (
     _ToolSpec(
         name="get_zotero_sources",
         verb=get_zotero_sources,
-        description="Return Zotero PDF sources that have at least one annotation.",
+        description=(
+            "Every attachment carrying at least one annotation, with the item it belongs to "
+            "and its `content_type`. NOT PDFs only — Zotero annotates HTML snapshots and "
+            "EPUBs, and an attachment with no parent reports its own key as the source. "
+            "Filter on `content_type` if you want just PDFs."
+        ),
         properties={"include_citekeys": _CITEKEYS_PROP},
     ),
     _ToolSpec(
