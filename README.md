@@ -110,8 +110,8 @@ Full rationale, transport split and the incident that motivated the gates:
 ## MCP
 
 ```bash
-uv run zotero-core-read-mcp     # 11 read tools
-uv run zotero-core-write-mcp    # 17 gated write tools; call zotero_write_preflight first
+uv run zotero-core-read-mcp     # the read tools
+uv run zotero-core-write-mcp    # the gated write tools; call zotero_write_preflight first
 ```
 
 Both adapters declare their tools in **one `TOOLS` table** from which the schema and the
@@ -119,13 +119,10 @@ dispatch are derived, so adding a tool is one entry rather than a three-place ch
 across two lists that must agree. **Undeclared arguments are refused, not dropped** — a
 misspelled `include_annotaions` used to vanish silently and hand back the default.
 
-Read tools (19): `get_zotero_window_state`, `get_zotero_active_reader`,
-`get_zotero_open_readers`, `get_zotero_annotations`, `resolve_zotero_pdf`,
-`get_zotero_sources`, `get_zotero_item`, `check_zotero_duplicate`, `list_zotero_pdfs`,
-`get_zotero_trash_count`, `ping_zotero`, `get_zotero_collections`,
-`get_zotero_collection_items`, `get_zotero_item_collections`,
-`find_zotero_collections`, `search_zotero_items`, `search_zotero_annotations`,
-`search_zotero_fulltext`, `get_zotero_attachment_text`.
+Read tools, generated from the table rather than retyped -- the previous list said
+19, enumerated 19, and omitted one:
+
+`get_zotero_window_state`, `get_zotero_active_reader`, `get_zotero_open_readers`, `get_zotero_annotations`, `resolve_zotero_pdf`, `get_zotero_sources`, `get_zotero_item`, `check_zotero_duplicate`, `list_zotero_pdfs`, `get_zotero_trash_count`, `get_zotero_collections`, `get_zotero_collection_items`, `get_zotero_item_collections`, `find_zotero_collections`, `search_zotero_items`, `search_zotero_annotations`, `search_zotero_fulltext`, `get_zotero_attachment_text`, `list_zotero_libraries`, `ping_zotero`.
 
 Point either adapter somewhere else with `ZOTERO_CORE_DB`, `ZOTERO_CORE_BRIDGE_URL`,
 `ZOTERO_CORE_BBT_URL` — MCP used to hard-wire `~/Zotero/zotero.sqlite` while the CLI had
@@ -152,7 +149,7 @@ library — this machine has group libraries, where 10 of its 95 collections liv
 ## QA
 
 ```bash
-just qa      # from the suite root: ruff + ty + 5 contracts + vulture + codespell + 218 tests
+just qa      # from the suite root: ruff + ty + 5 contracts + vulture + codespell + tests
 ```
 
 `ruff format` is **deliberately absent** — `__all__` is grouped by CRUD concern rather

@@ -9,13 +9,13 @@ inside `list_tools()`, an `if name == ...` branch in `call_core()`, and hand-wri
 lists agreed about names, and no rejection of undeclared arguments: a misspelled
 `include_annotaions` was silently dropped and the caller got the default.
 
-The sibling write adapter solved this at 17 tools and said why: "two copies of one fact
+The sibling write adapter solved this first and said why: "two copies of one fact
 is the defect this package was built to end." The read adapter had 6 tools and never got
 the refactor, which is also why it grew none.
 
 WHAT IS NEW HERE (2026-08-19)
 -----------------------------
-Five tools that were implemented and unreachable. `read/items.py` and
+Tools that were implemented and unreachable. `read/items.py` and
 `read/duplicates.py` had SEVEN public methods between them and not one was exposed from
 CLI or MCP, so an agent could not read an item's type, fields, creators or tags, and
 could not ask "is this already in the library" without attempting a create and parsing

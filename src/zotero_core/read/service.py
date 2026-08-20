@@ -129,7 +129,7 @@ class ZoteroContext:
     def get_item(self, item_key: str) -> dict:
         """Everything about one item in a single read: state, fields, creators, tags.
 
-        Four queries rather than one because they fan out differently (fields and tags
+        Several queries rather than one because they fan out differently (fields and tags
         are one-to-many, creators are ordered), and a caller almost always wants all
         four -- an agent deciding what to do next needs the type, and reading creators
         used to require deliberately triggering a `refusing_to_replace` refusal and

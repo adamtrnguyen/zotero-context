@@ -56,7 +56,7 @@ def list_libraries(
     busy_timeout_ms: int = DEFAULT_BUSY_TIMEOUT_MS,
 ) -> tuple[tuple[Library, ...], str]:
     """Every library, with a live item count. Returns the rows AND the read mode."""
-    path = Path(db_path) if db_path else DEFAULT_ZOTERO_DB
+    path = Path(db_path or DEFAULT_ZOTERO_DB).expanduser()
     conn, read_mode = open_readonly(path, busy_timeout_ms=busy_timeout_ms)
     try:
         rows = conn.execute(_LIBRARIES_SQL).fetchall()

@@ -147,7 +147,7 @@ class ZoteroSearchStore:
         busy_timeout_ms: int = DEFAULT_BUSY_TIMEOUT_MS,
         storage_dir: str | Path | None = None,
     ):
-        self.db_path = Path(db_path) if db_path else DEFAULT_ZOTERO_DB
+        self.db_path = Path(db_path or DEFAULT_ZOTERO_DB).expanduser()
         self.library_id = library_id
         self.busy_timeout_ms = busy_timeout_ms
         self.storage_dir = Path(storage_dir) if storage_dir else self.db_path.parent / "storage"

@@ -26,17 +26,20 @@ made -- so the whole check is three queries over a few thousand rows.
 
 ON THE NORMALISER
 -----------------
-`_norm_title` is deliberately small, and it is NOT the same code as
-calibre-core's `dedup_key`, which is considerably better: it handles CJK, Hangul
-Jamo decomposition, kana voicing marks, and ordinal-before-"edition" stripping,
-each because a real book in that library broke the naive version. This one cannot
-import it -- CalibreSuite and ZoteroSuite are separate repos with separate remotes,
-and a cross-suite dependency for one function is a worse trade than a small local
-copy. The consequence is real and worth stating rather than hiding: a CJK-titled
-paper will normalise less well here than the same title would in Calibre. If
-cross-library title matching ever becomes load-bearing -- which is exactly what
-calibre2zotero does -- the normaliser is the thing to extract into a shared
-package, not to reimplement a third time.
+`_norm_title` is `domain.policy.normalize_title` -- shared with the search layer since
+2026-08-19, so the two cannot drift.
+
+⚠ This paragraph used to say the normaliser "cannot import" calibre-core's better
+`dedup_key` and that "a CJK-titled paper will normalise less well here". The specific
+defect it was describing -- NFKD splitting kana voicing marks so 'が' and 'か' compared
+EQUAL -- is fixed in `domain/policy.py`; those marks are preserved because they are
+phonemic, while Latin accents still fold because they are decoration.
+
+What remains true: this is still not calibre-core's `dedup_key`, which additionally
+handles Hangul Jamo decomposition and ordinal-before-"edition" stripping. If
+cross-library title matching becomes load-bearing -- which is what calibre2zotero does
+-- the normaliser is the thing to extract into a shared package rather than reimplement
+a third time.
 """
 
 from __future__ import annotations

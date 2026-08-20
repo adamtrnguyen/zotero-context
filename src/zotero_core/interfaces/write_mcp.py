@@ -1,4 +1,4 @@
-"""MCP adapter over the gated write surface. The agent-facing half of `zotero_writes`.
+"""MCP adapter over the gated write surface: the agent-facing half of `zotero_core.write`.
 
 WHY THIS EXISTS, GIVEN THAT COOKJOHN ALREADY SPEAKS MCP
 ------------------------------------------------------
@@ -20,7 +20,7 @@ implemented locally, and the transport choice stays where `writes.py` put it.
 
 WHAT IT DOES NOT EXPOSE, AND WHY
 --------------------------------
-**No read tools.** `zotero_context` owns reads and is already correct, and the package
+**No read tools.** `zotero_core.read` owns reads, and the sibling adapter
 docstring's rule is that wrapping them "would create a second answer to what is in the
 library, which is the exact failure this package exists to end". The registered
 `zotero-context` server already serves that half.
@@ -46,7 +46,7 @@ WHY A TABLE INSTEAD OF core's IF-CHAIN
 in `call_core`. Everything else here mirrors that file -- `run`, `main`, the
 `@server.list_tools()` / `@server.call_tool()` pair, the stdio transport, the
 `InitializationOptions` block, and the `{"ok": false, ...}` error envelope. The
-dispatch is the one deviation: at 17 tools the schema and the call site are two lists
+dispatch is the one deviation: past a dozen tools the schema and the call site are two lists
 that have to agree about 17 names, and a table makes them one list. That is the same
 argument `find_key` won in `cookjohn.py` -- two copies of one fact is the defect this
 package was built to end -- and it is also what keeps `call_tool` under ruff's
@@ -103,7 +103,7 @@ from ..write.verbs import (
 
 SERVER_NAME = "zotero-writes"
 
-# Reusable schema fragments. `force` is spelled out once so all six gated verbs
+# Reusable schema fragments. `force` is spelled out once so every gated verb
 # describe it identically -- and so there is exactly one place to read to confirm it
 # defaults to False.
 _FORCE = {

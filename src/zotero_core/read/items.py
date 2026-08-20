@@ -4,7 +4,7 @@ Exists to serve the WRITE gate in `../../../../writes` without putting any SQL
 there. Every precondition a write needs is a read -- does this key resolve, is it
 already in the trash, what type is it, what hangs off it -- and ZoteroSuite's rule
 is that consumers do not duplicate Zotero SQL (README, "Rules of the road"). So
-the reads live here, in the canonical read layer, and `zotero_writes` reaches
+the reads live here, in the canonical read layer, and `zotero_core.write` reaches
 Zotero through exactly one channel: the linker plugin's HTTP endpoint.
 
 core stays READ-ONLY. Nothing here opens the database read-write.
@@ -46,7 +46,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .annotations import DEFAULT_ZOTERO_DB
-from .connect import USER_LIBRARY_ID, open_readonly
+from .connect import DEFAULT_BUSY_TIMEOUT_MS, USER_LIBRARY_ID, open_readonly
 
 
 @dataclass(frozen=True)
@@ -127,7 +127,7 @@ class ZoteroItemStore:
         db_path: str | Path | None = None,
         *,
         library_id: int = USER_LIBRARY_ID,
-        busy_timeout_ms: int = 5000,
+        busy_timeout_ms: int = DEFAULT_BUSY_TIMEOUT_MS,
     ):
         # Resolved at CALL time rather than as a default argument. `db_path=
         # DEFAULT_ZOTERO_DB` in the signature binds the constant when the `def`

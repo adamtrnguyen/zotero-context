@@ -14,7 +14,7 @@ copying a client. Which transport serves a verb is now an implementation detail 
 that verb -- visible in the `transport` field of the result for debugging, never in
 the signature.
 
-Reads are NOT re-exported here. `zotero_context` already owns them and is already
+Reads are NOT re-exported here. `zotero_core.read` owns them and is already
 correct; wrapping them would create a second answer to "what is in the library",
 which is the exact failure this package exists to end.
 
