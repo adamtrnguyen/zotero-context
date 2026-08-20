@@ -32,8 +32,9 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
+from ..domain.annotation_type import label_for
 from ..domain.services.policy import DEFAULT_FUZZY_THRESHOLD, normalize_title, score_tokens
-from .annotations import ANNOTATION_TYPE, DEFAULT_ZOTERO_DB
+from .annotations import DEFAULT_ZOTERO_DB
 from .connect import DEFAULT_BUSY_TIMEOUT_MS, USER_LIBRARY_ID, open_readonly
 
 FT_CACHE_NAME = ".zotero-ft-cache"
@@ -252,7 +253,7 @@ class ZoteroSearchStore:
         wanted_color = (color or "").strip().casefold()
         hits: list[AnnotationHit] = []
         for key, att_key, parent_key, parent_title, type_id, text, comment, colour, page in rows:
-            type_name = ANNOTATION_TYPE.get(type_id, str(type_id))
+            type_name = label_for(type_id)
             if types and type_name not in types:
                 continue
             if wanted_color and colour.casefold() != wanted_color:

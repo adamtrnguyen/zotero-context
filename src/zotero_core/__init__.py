@@ -48,10 +48,11 @@ from .domain.entities import (
     ZoteroItem,
     ZoteroSource,
 )
+from .domain.services.identifiers import clean_doi, clean_isbn
 from .read.annotations import ZoteroAnnotationStore
 from .read.bbt import BetterBibTeXClient
 from .read.bridge import ZoteroBridgeClient
-from .read.duplicates import check_duplicate, clean_doi, clean_isbn
+from .read.duplicates import check_duplicate
 from .read.items import (
     USER_LIBRARY_ID,
     ItemState,

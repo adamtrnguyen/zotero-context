@@ -39,6 +39,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
+from ..domain.annotation_type import ANNOTATION_TYPE_NAMES
 from ..domain.entities import to_jsonable
 from ..read.annotations import ZoteroAnnotationError
 from ..read.bridge import ZoteroBridgeError
@@ -46,10 +47,8 @@ from ..read.service import ZoteroContext
 
 SERVER_NAME = "zotero-context"
 
-# `annotations.ANNOTATION_TYPE` is the authority; repeated here as a schema `enum` so the
-# vocabulary is DISCOVERABLE. The old description advertised only "['highlight', 'note']"
-# as an example, which left types 3-6 undiscoverable -- a caller had to guess them.
-ANNOTATION_TYPE_NAMES = ("highlight", "note", "image", "ink", "underline", "text")
+# Derived from the domain enum, not transcribed. This was a hand-maintained tuple whose
+# own comment asked to be kept in step by hand -- a promise no comment can keep.
 
 _CTX: ZoteroContext | None = None
 

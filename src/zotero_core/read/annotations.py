@@ -3,19 +3,15 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
+from ..domain.annotation_type import ANNOTATION_TYPE as ANNOTATION_TYPE  # re-export
+from ..domain.annotation_type import label_for
 from ..domain.entities import Annotation, ZoteroSource
 from .connect import DEFAULT_BUSY_TIMEOUT_MS, ZoteroReadError, open_readonly
 
 DEFAULT_ZOTERO_DB = Path.home() / "Zotero" / "zotero.sqlite"
 
-ANNOTATION_TYPE = {
-    1: "highlight",
-    2: "note",
-    3: "image",
-    4: "ink",
-    5: "underline",
-    6: "text",
-}
+# Re-exported from the domain so the name keeps resolving here -- tests and the
+# MCP adapter both import it from this module. The declaration is one place now.
 
 
 # Back-compat alias; the real definition (and the reason it moved) is in connect.py.
@@ -178,7 +174,7 @@ class ZoteroAnnotationStore:
             key=key,
             attachment_key=attachment_key,
             parent_key=row[2] or None,
-            type=ANNOTATION_TYPE.get(row[3], f"type{row[3]}"),
+            type=label_for(row[3]),
             page_label=page_label,
             color=row[5] or "",
             text=row[6] or "",
