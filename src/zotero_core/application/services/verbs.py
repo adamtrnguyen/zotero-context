@@ -50,14 +50,10 @@ from __future__ import annotations
 import os
 
 from zotero_core.application.results import ok
-from zotero_core.application.services.liveness import require_zotero
+from zotero_core.application.services.session import WriteSession
 from zotero_core.domain.errors import Reason, WriteBlocked
+from zotero_core.domain.ports.catalogue import Catalogue
 from zotero_core.domain.services.identity import is_key
-from zotero_core.infrastructure.journal import copy_database, write_manifest
-from zotero_core.infrastructure.sqlite.duplicates import check_duplicate
-from zotero_core.infrastructure.sqlite.items import ZoteroItemStore
-from zotero_core.infrastructure.transports.cookjohn import CookjohnClient, find_key
-from zotero_core.infrastructure.transports.linker import LinkerClient
 
 # `write_metadata`'s own description: "Only works on regular items, not notes or
 # attachments." Enforced here rather than left to the plugin, because this package
@@ -94,7 +90,7 @@ def check_keys(item_keys) -> list[str]:
     return keys
 
 
-def require_items(store: ZoteroItemStore, keys: list[str]):
+def require_items(store: Catalogue, keys: list[str]):
     """Every key must resolve in the user library, or the whole batch is refused.
 
     `linker/bootstrap.js` resolves each key with `Zotero.Items.getByLibraryAndKey`,
@@ -129,20 +125,6 @@ def _require_regular_item(states, key: str) -> None:
         )
 
 
-class _Session:
-    """The transports and the read store for one operation.
-
-    Exists so every verb takes the same three optional injection points without
-    repeating the construction, and so tests can hand in fakes for both plugins.
-    """
-
-    def __init__(self, linker=None, cookjohn=None, store=None):
-        self.linker = linker or LinkerClient()
-        self.cookjohn = cookjohn or CookjohnClient()
-        self.store = store or ZoteroItemStore()
-
-    def require(self, *needs: str) -> dict:
-        return require_zotero(needs=needs, linker=self.linker, cookjohn=self.cookjohn)
 
 
 # --------------------------------------------------------------------------
@@ -196,9 +178,7 @@ def create_item(
     collection_key: str | None = None,
     calibre_uuid: str | None = None,
     force: bool = False,
-    linker=None,
-    cookjohn=None,
-    store=None,
+    session: WriteSession,
 ) -> dict:
     """Create a regular item, refusing a guaranteed duplicate.
 
@@ -215,11 +195,9 @@ def create_item(
 
     force=True downgrades a duplicate `block` to a warning carried in the result.
     """
-    session = _Session(linker, cookjohn, store)
     fields = _create_preflight(item_type, fields, collection_key, calibre_uuid)
     info = session.require("cookjohn")
-    dup = check_duplicate(
-        session.store,
+    dup = session.duplicates.check(
         title=fields.get("title"),
         doi=fields.get("DOI"),
         isbn=fields.get("ISBN"),
@@ -240,7 +218,7 @@ def create_item(
     if tags:
         arguments["tags"] = list(tags)
     reply = session.cookjohn.call("write_item", arguments)
-    item_key = find_key(reply)
+    item_key = session.cookjohn.find_key(reply)
     if not item_key:
         # cookjohn can answer without a key. Reporting ok=True here would make a
         # no-op indistinguishable from a create -- calibre-core's `add_book` guards
@@ -266,8 +244,7 @@ def create_item(
         from zotero_core.application.services.collections import add_items_to_collection
 
         result["collection"] = add_items_to_collection(
-            collection_key, [item_key], linker=session.linker,
-            cookjohn=session.cookjohn, store=session.store,
+            collection_key, [item_key], session=session
         )
     # Verify by READING it back: the create is only real if the item resolves.
     after = session.store.item_states([item_key])
@@ -285,7 +262,7 @@ def create_item(
 
 
 def _verify_attachment(
-    store: ZoteroItemStore, attachment_key: str | None, parent_item_key: str, *, expect_file: bool
+    store: Catalogue, attachment_key: str | None, parent_item_key: str, *, expect_file: bool
 ) -> dict:
     """Confirm the attachment exists, hangs off the right parent, and has a FILE.
 
@@ -356,9 +333,7 @@ def link_attachment(
     path: str,
     *,
     title: str | None = None,
-    linker=None,
-    cookjohn=None,
-    store=None,
+    session: WriteSession,
 ) -> dict:
     """Attach a file BY REFERENCE — no copy into ~/Zotero/storage.
 
@@ -372,7 +347,6 @@ def link_attachment(
     produces an attachment that points at nothing -- and it fails silently, because
     linking never reads the file.
     """
-    session = _Session(linker, cookjohn, store)
     check_keys([parent_item_key])
     if not os.path.isabs(path):
         raise WriteBlocked(
@@ -414,9 +388,7 @@ def import_attachment(
     path: str,
     *,
     title: str | None = None,
-    linker=None,
-    cookjohn=None,
-    store=None,
+    session: WriteSession,
 ) -> dict:
     """Attach a file BY COPY into Zotero's storage. Contrast `link_attachment`.
 
@@ -426,7 +398,6 @@ def import_attachment(
     library already on disk elsewhere that is the wrong default, which is why
     ZoteroSuite built the linker at all.
     """
-    session = _Session(linker, cookjohn, store)
     check_keys([parent_item_key])
     if not os.path.exists(path):
         raise WriteBlocked(
@@ -438,7 +409,7 @@ def import_attachment(
     if title:
         arguments["title"] = title
     reply = session.cookjohn.call("write_item", arguments)
-    attachment_key = find_key(reply)
+    attachment_key = session.cookjohn.find_key(reply)
     if not attachment_key:
         # `create_item` raises exactly here for exactly this (COOKJOHN_RETURNED_NO_KEY);
         # this verb used to put the None straight into its envelope beside "ok": True,
@@ -473,9 +444,7 @@ def update_metadata(
     fields: dict[str, str],
     *,
     journal_dir: str | None = None,
-    linker=None,
-    cookjohn=None,
-    store=None,
+    session: WriteSession,
 ) -> dict:
     """Set metadata fields on one regular item, journalling the previous values.
 
@@ -487,7 +456,6 @@ def update_metadata(
     own description says metadata "only works on regular items"; catching it here
     turns a plugin-side failure into a precondition with a reason.
     """
-    session = _Session(linker, cookjohn, store)
     check_keys([item_key])
     if not fields:
         raise WriteBlocked(
@@ -517,7 +485,7 @@ def update_metadata(
     overwritten = {k: was[k] for k in fields if k in was}
     added = sorted(k for k in fields if k not in was)
 
-    manifest = write_manifest(
+    manifest = session.journal.write_manifest(
         "update_metadata",
         before={
             "item_key": item_key,
@@ -554,7 +522,7 @@ def update_metadata(
 
 
 def _verify_fields(
-    store: ZoteroItemStore, item_key: str, written: dict[str, str], item_type: str = ""
+    store: Catalogue, item_key: str, written: dict[str, str], item_type: str = ""
 ) -> dict:
     """Re-read the fields and classify each one, tolerating Zotero's two rewrites.
 
@@ -634,7 +602,7 @@ def _creator_key(creator: dict) -> tuple:
     )
 
 
-def _verify_creators(store: ZoteroItemStore, item_key: str, written) -> dict:
+def _verify_creators(store: Catalogue, item_key: str, written) -> dict:
     """Re-read the creators and compare IN ORDER.
 
     Order is meaning, not presentation: the first author drives the duplicate-detection
@@ -675,9 +643,7 @@ def replace_creators(
     *,
     force: bool = False,
     journal_dir: str | None = None,
-    linker=None,
-    cookjohn=None,
-    store=None,
+    session: WriteSession,
 ) -> dict:
     """REPLACE every creator on an item. Refuses without force=True.
 
@@ -690,7 +656,6 @@ def replace_creators(
     replacing, which the caller can now do explicitly with `item_creators` -- and
     doing it for them would hide that the write is still a full replacement.
     """
-    session = _Session(linker, cookjohn, store)
     check_keys([item_key])
     info = session.require("cookjohn")
     states = require_items(session.store, [item_key])
@@ -709,7 +674,7 @@ def replace_creators(
                 "hint": "force=True",
             },
         )
-    manifest = write_manifest(
+    manifest = session.journal.write_manifest(
         "replace_creators",
         before={"item_key": item_key, "creators": list(was), "title": states[item_key].title},
         inverse=f"replace_creators({item_key!r}, {list(was)!r}, force=True)",
@@ -736,9 +701,9 @@ def replace_creators(
 # tags — additive by default, replacement gated
 # --------------------------------------------------------------------------
 
-def add_tags(item_key: str, tags: list[str], *, linker=None, cookjohn=None, store=None) -> dict:
+def add_tags(item_key: str, tags: list[str], *, session: WriteSession) -> dict:
     """Add tags, keeping the existing ones. No manifest: the inverse is `remove_tags`."""
-    return _tag_op("add", item_key, tags, linker=linker, cookjohn=cookjohn, store=store)
+    return _tag_op("add", item_key, tags, session=session)
 
 
 def remove_tags(
@@ -746,14 +711,12 @@ def remove_tags(
     tags: list[str],
     *,
     journal_dir: str | None = None,
-    linker=None,
-    cookjohn=None,
-    store=None,
+    session: WriteSession,
 ) -> dict:
     """Remove specific tags, leaving the rest. Journalled — it destroys something."""
     return _tag_op(
         "remove", item_key, tags, journal_dir=journal_dir,
-        linker=linker, cookjohn=cookjohn, store=store,
+        session=session,
     )
 
 
@@ -763,9 +726,7 @@ def set_tags(
     *,
     force: bool = False,
     journal_dir: str | None = None,
-    linker=None,
-    cookjohn=None,
-    store=None,
+    session: WriteSession,
 ) -> dict:
     """REPLACE every tag on an item. Refuses without force=True.
 
@@ -776,7 +737,7 @@ def set_tags(
     """
     return _tag_op(
         "set", item_key, tags, force=force, journal_dir=journal_dir,
-        linker=linker, cookjohn=cookjohn, store=store,
+        session=session,
     )
 
 
@@ -837,11 +798,8 @@ def _tag_op(
     *,
     force: bool = False,
     journal_dir: str | None = None,
-    linker=None,
-    cookjohn=None,
-    store=None,
+    session: WriteSession,
 ) -> dict:
-    session = _Session(linker, cookjohn, store)
     check_keys([item_key])
     if not tags:
         raise WriteBlocked(
@@ -875,7 +833,7 @@ def _tag_op(
 
     manifest = None
     if action in ("set", "remove"):
-        manifest = write_manifest(
+        manifest = session.journal.write_manifest(
             f"{action}_tags",
             before={"item_key": item_key, "tags": list(was)},
             inverse=f"set_tags({item_key!r}, {list(was)!r}, force=True)",
@@ -941,7 +899,7 @@ def _note_existing_checks(session, action, parent_item_key, note_key, journal_di
         )
     if action != "update":
         return None
-    return write_manifest(
+    return session.journal.write_manifest(
         "write_note",
         before={
             "note_key": note_key,
@@ -959,7 +917,7 @@ def _note_existing_checks(session, action, parent_item_key, note_key, journal_di
 
 
 def _verify_note(
-    store: ZoteroItemStore, note_key: str | None, parent_item_key, action: str
+    store: Catalogue, note_key: str | None, parent_item_key, action: str
 ) -> dict:
     """Confirm the note item exists, is a note, and hangs off the right parent.
 
@@ -1014,9 +972,7 @@ def write_note(
     action: str = "create",
     tags: list[str] | None = None,
     journal_dir: str | None = None,
-    linker=None,
-    cookjohn=None,
-    store=None,
+    session: WriteSession,
 ) -> dict:
     """Create, append to, or replace a note.
 
@@ -1026,7 +982,6 @@ def write_note(
     `itemNotes.note`, and copying a page of prose into /tmp on every edit turns a
     write journal into a document store. Use `append` when the old text matters.
     """
-    session = _Session(linker, cookjohn, store)
     _note_preflight(action, content, parent_item_key, note_key)
     info = session.require("cookjohn")
     manifest = _note_existing_checks(
@@ -1041,7 +996,7 @@ def write_note(
     if tags:
         arguments["tags"] = list(tags)
     reply = session.cookjohn.call("write_note", arguments)
-    key = note_key or find_key(reply)
+    key = note_key or session.cookjohn.find_key(reply)
     return ok(
         f'write_note:{action}',
         transport='cookjohn',
@@ -1122,9 +1077,7 @@ def _trash_op(
     force: bool,
     copy_db: bool,
     journal_dir: str | None,
-    linker,
-    cookjohn,
-    store,
+    session: WriteSession,
 ) -> dict:
     """The shared body of trash_items and restore_items.
 
@@ -1133,14 +1086,13 @@ def _trash_op(
     would be two places for the preconditions to drift, which is the defect that
     motivated this package.
     """
-    session = _Session(linker, cookjohn, store)
     info = session.require("linker")
     keys = check_keys(item_keys)
     states, to_send = _resolve_batch(session.store, keys, want_trashed=want_trashed, force=force)
     skipped = [k for k in keys if k not in set(to_send)]
 
     inverse = "restore_items" if op == "trash_items" else "trash_items"
-    manifest = write_manifest(
+    manifest = session.journal.write_manifest(
         op,
         before={
             "item_keys": to_send,
@@ -1161,7 +1113,9 @@ def _trash_op(
         inverse=f"{inverse}({to_send})",
         journal_dir=journal_dir,
     )
-    db_backup = copy_database(journal_dir, session.store.db_path) if copy_db else None
+    db_backup = (
+        session.journal.copy_database(journal_dir, session.store.db_path) if copy_db else None
+    )
 
     reply = session.linker.post(endpoint, {"itemKeys": to_send})
     # The plugin reports keys it could not resolve. The existence gate just confirmed
@@ -1217,9 +1171,7 @@ def trash_items(
     force: bool = False,
     copy_db: bool = False,
     journal_dir: str | None = None,
-    linker=None,
-    cookjohn=None,
-    store=None,
+    session: WriteSession,
 ) -> dict:
     """Move items to the Zotero trash. Recoverable — see `restore_items`.
 
@@ -1240,7 +1192,7 @@ def trash_items(
     return _trash_op(
         "trash_items", "trash-items", item_keys, want_trashed=True, force=force,
         copy_db=copy_db, journal_dir=journal_dir,
-        linker=linker, cookjohn=cookjohn, store=store,
+        session=session,
     )
 
 
@@ -1250,9 +1202,7 @@ def restore_items(
     force: bool = False,
     copy_db: bool = False,
     journal_dir: str | None = None,
-    linker=None,
-    cookjohn=None,
-    store=None,
+    session: WriteSession,
 ) -> dict:
     """Bring items back out of the trash — the inverse of `trash_items`.
 
@@ -1264,5 +1214,5 @@ def restore_items(
     return _trash_op(
         "restore_items", "restore-items", item_keys, want_trashed=False, force=force,
         copy_db=copy_db, journal_dir=journal_dir,
-        linker=linker, cookjohn=cookjohn, store=store,
+        session=session,
     )

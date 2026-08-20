@@ -51,6 +51,8 @@ PUBLISHED = (
     "import_attachment",
     "update_metadata",
     "write_note",
+    # The composition root, published because the verbs now REQUIRE a session.
+    "build_write_session",
 )
 
 
@@ -90,7 +92,13 @@ def test_the_public_surface_is_enough_to_write():
     `write/` to `application/`) and this consumer needed no edit for either. These are the
     names it actually uses.
     """
-    for name in ("CookjohnClient", "import_attachment", "update_metadata", "write_note"):
+    for name in (
+        "build_write_session",
+        "CookjohnClient",
+        "import_attachment",
+        "update_metadata",
+        "write_note",
+    ):
         assert hasattr(zotero_core, name), f"{name} left the public surface"
 
 

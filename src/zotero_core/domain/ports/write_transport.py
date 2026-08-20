@@ -42,6 +42,17 @@ class Cookjohn(Protocol):
 
     def ping(self) -> dict: ...
 
+    def find_key(self, payload, prefer: tuple[str, ...] = ()) -> str | None:
+        """Dig the key of a just-created thing out of THIS transport's reply.
+
+        On the port because reply SHAPE is a property of the transport, not of the verb:
+        cookjohn answers `write_item` with a nested `data.itemKey` and `create_collection`
+        with a flat `key`, and a different backend would answer differently. A verb that
+        imported one backend's parser could not be pointed at another -- which is exactly
+        the constraint that matters while cookjohn is being replaced.
+        """
+        ...
+
 
 @runtime_checkable
 class Linker(Protocol):

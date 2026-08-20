@@ -60,7 +60,7 @@ from typing import Any
 
 from zotero_core.application.results import ok
 from zotero_core.domain.errors import Reason, WriteBlocked
-from zotero_core.infrastructure.journal import DEFAULT_JOURNAL_DIR
+from zotero_core.domain.ports.journal import Journal
 
 PLACEHOLDER_MARKERS = ("<", ">")
 
@@ -151,13 +151,15 @@ def _classify(inverse: str | None) -> tuple[bool, str | None]:
     return True, None
 
 
-def list_entries(journal_dir: str | None = None, *, limit: int = 25) -> list[Entry]:
+def list_entries(
+    journal_dir: str | None = None, *, limit: int = 25, journal: Journal
+) -> list[Entry]:
     """Journal manifests, NEWEST FIRST, each with whether it can be replayed.
 
     Sorted by the microsecond STAMP inside the filename, not by the filename -- see
     `_sort_key` for why those are different and what it cost.
     """
-    directory = journal_dir or DEFAULT_JOURNAL_DIR
+    directory = journal_dir or journal.default_dir
     entries: list[Entry] = []
     paths = sorted(glob.glob(os.path.join(directory, "*.json")), key=_sort_key, reverse=True)
     for path in paths[:limit]:
@@ -191,7 +193,7 @@ def undo(
     *,
     journal_dir: str | None = None,
     dry_run: bool = False,
-    **injected: Any,
+    session: Any,
 ) -> dict:
     """Replay one manifest's inverse. Defaults to the most recent replayable entry.
 
@@ -199,13 +201,14 @@ def undo(
     without making it -- which is the mode to use first, because an undo is itself a
     write and lands in the journal like any other.
     """
-    entries = list_entries(journal_dir, limit=200)
+    entries = list_entries(journal_dir, limit=200, journal=session.journal)
     if manifest_path:
         matches = [e for e in entries if e.path == manifest_path or e.path.endswith(manifest_path)]
         if not matches:
             raise WriteBlocked(
                 Reason.MISSING_REQUIRED_FIELD,
-                f"no manifest matching {manifest_path!r} in {journal_dir or DEFAULT_JOURNAL_DIR}",
+                f"no manifest matching {manifest_path!r} in "
+                f"{journal_dir or session.journal.default_dir}",
                 {"available": [e.path for e in entries[:10]]},
             )
         entry = matches[0]
@@ -247,9 +250,13 @@ def undo(
             would_call=plan,
         )
 
-    # The injected transports/store are for tests; a real caller passes nothing and the
-    # verb builds its own session, exactly as a direct call would.
-    result = verb(*args, **{**kwargs, **injected})
+    # ⚠ WAS `verb(*args, **{**kwargs, **injected})`, whose comment read: "the injected
+    # transports/store are for tests; a real caller passes nothing and the verb builds its
+    # own session". Verbs no longer build their own anything -- the session is required and
+    # comes from the caller, so the replayed verb runs against exactly the collaborators the
+    # undo itself was given. A replay that silently built a DIFFERENT session than the
+    # caller's would be replaying against another database.
+    result = verb(*args, **kwargs, session=session)
     return ok(
         'undo',
         transport='none',

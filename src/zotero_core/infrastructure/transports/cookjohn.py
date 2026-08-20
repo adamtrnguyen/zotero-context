@@ -61,6 +61,14 @@ class CookjohnClient:
         self._initialized = False
         self.server_info: dict = {}
 
+    def find_key(self, payload, prefer: tuple[str, ...] = ()) -> str | None:
+        """Satisfies `ports.write_transport.Cookjohn.find_key`.
+
+        Delegates to the module function below rather than duplicating it: that function
+        is still the implementation and is still what its own tests exercise directly.
+        """
+        return find_key(payload, prefer=prefer)
+
     def ping(self) -> dict:
         """Liveness. Returns serverInfo, which is what identifies the plugin."""
         self._initialize()

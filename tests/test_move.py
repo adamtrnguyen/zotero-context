@@ -28,21 +28,21 @@ def _setup(zotero):
     return src, dst
 
 
-def test_a_move_leaves_the_items_only_in_the_target(zotero, linker, cookjohn):
+def test_a_move_leaves_the_items_only_in_the_target(zotero, session):
     src, dst = _setup(zotero)
     result = move_items_between_collections(
-        src, dst, ["AAAA1111"], linker=linker, cookjohn=cookjohn, store=zotero.store()
+        src, dst, ["AAAA1111"], session=session
     )
     assert result["ok"] is True
     assert zotero.collection_members(dst) == ["AAAA1111"]
     assert zotero.collection_members(src) == ["BBBB2222"]
 
 
-def test_a_move_verifies_both_sides(zotero, linker, cookjohn):
+def test_a_move_verifies_both_sides(zotero, session):
     """The two-call route verified nothing at all."""
     src, dst = _setup(zotero)
     result = move_items_between_collections(
-        src, dst, ["AAAA1111"], linker=linker, cookjohn=cookjohn, store=zotero.store()
+        src, dst, ["AAAA1111"], session=session
     )
     assert result["verification"] == {
         "verified": True,
@@ -51,12 +51,12 @@ def test_a_move_verifies_both_sides(zotero, linker, cookjohn):
     }
 
 
-def test_a_move_writes_one_manifest_with_a_real_inverse(zotero, linker, cookjohn, tmp_path):
+def test_a_move_writes_one_manifest_with_a_real_inverse(zotero, tmp_path, session):
     """The two-call route journalled only the removal, so the inverse it recorded put
     the item back in the source without taking it out of the target."""
     src, dst = _setup(zotero)
     result = move_items_between_collections(
-        src, dst, ["AAAA1111"], linker=linker, cookjohn=cookjohn, store=zotero.store()
+        src, dst, ["AAAA1111"], session=session
     )
     payload = json.loads(pathlib.Path(result["undo_manifest"]).read_text())
     assert payload["op"] == "move_items_between_collections"
@@ -65,15 +65,13 @@ def test_a_move_writes_one_manifest_with_a_real_inverse(zotero, linker, cookjohn
     assert payload["inverse"].index(repr(dst)) < payload["inverse"].index(repr(src))
 
 
-def test_moving_several_items_at_once(zotero, linker, cookjohn):
+def test_moving_several_items_at_once(zotero, session):
     src, dst = _setup(zotero)
     move_items_between_collections(
         src,
         dst,
         ["AAAA1111", "BBBB2222"],
-        linker=linker,
-        cookjohn=cookjohn,
-        store=zotero.store(),
+        session=session,
     )
     assert sorted(zotero.collection_members(dst)) == ["AAAA1111", "BBBB2222"]
     assert zotero.collection_members(src) == []
@@ -84,23 +82,23 @@ def test_moving_several_items_at_once(zotero, linker, cookjohn):
 # --------------------------------------------------------------------------
 
 
-def test_moving_to_the_same_collection_is_refused(zotero, linker, cookjohn):
+def test_moving_to_the_same_collection_is_refused(zotero, session):
     src, _ = _setup(zotero)
     with pytest.raises(WriteBlocked) as excinfo:
         move_items_between_collections(
-            src, src, ["AAAA1111"], linker=linker, cookjohn=cookjohn, store=zotero.store()
+            src, src, ["AAAA1111"], session=session
         )
     assert excinfo.value.code == Reason.NOTHING_TO_DO
 
 
-def test_moving_an_item_that_is_not_in_the_source_is_refused(zotero, linker, cookjohn):
+def test_moving_an_item_that_is_not_in_the_source_is_refused(zotero, session):
     """Through the two-call route this is a SILENT no-op that reports success: the add
     succeeds, the remove removes nothing, and the caller is told it worked."""
     src, dst = _setup(zotero)
     zotero.add("CCCC3333", title="Unfiled")
     with pytest.raises(WriteBlocked) as excinfo:
         move_items_between_collections(
-            src, dst, ["CCCC3333"], linker=linker, cookjohn=cookjohn, store=zotero.store()
+            src, dst, ["CCCC3333"], session=session
         )
     assert excinfo.value.code == Reason.NOTHING_TO_DO
     assert excinfo.value.detail["not_in_source"] == ["CCCC3333"]
@@ -108,7 +106,7 @@ def test_moving_an_item_that_is_not_in_the_source_is_refused(zotero, linker, coo
     assert zotero.collection_members(dst) == []
 
 
-def test_force_files_an_unsourced_item_and_names_it(zotero, linker, cookjohn):
+def test_force_files_an_unsourced_item_and_names_it(zotero, session):
     src, dst = _setup(zotero)
     zotero.add("CCCC3333", title="Unfiled")
     result = move_items_between_collections(
@@ -116,37 +114,35 @@ def test_force_files_an_unsourced_item_and_names_it(zotero, linker, cookjohn):
         dst,
         ["AAAA1111", "CCCC3333"],
         force=True,
-        linker=linker,
-        cookjohn=cookjohn,
-        store=zotero.store(),
+        session=session,
     )
     assert result["not_in_source"] == ["CCCC3333"]
     assert sorted(zotero.collection_members(dst)) == ["AAAA1111", "CCCC3333"]
 
 
-def test_an_unknown_collection_is_refused(zotero, linker, cookjohn):
+def test_an_unknown_collection_is_refused(zotero, session):
     src, _ = _setup(zotero)
     with pytest.raises(WriteBlocked) as excinfo:
         move_items_between_collections(
-            src, "NOSUCH00", ["AAAA1111"], linker=linker, cookjohn=cookjohn, store=zotero.store()
+            src, "NOSUCH00", ["AAAA1111"], session=session
         )
     assert excinfo.value.code == Reason.UNKNOWN_COLLECTION_KEY
 
 
-def test_an_unknown_item_is_refused(zotero, linker, cookjohn):
+def test_an_unknown_item_is_refused(zotero, session):
     src, dst = _setup(zotero)
     with pytest.raises(WriteBlocked) as excinfo:
         move_items_between_collections(
-            src, dst, ["NOPE0000"], linker=linker, cookjohn=cookjohn, store=zotero.store()
+            src, dst, ["NOPE0000"], session=session
         )
     assert excinfo.value.code == Reason.UNKNOWN_ITEM_KEYS
 
 
-def test_a_malformed_collection_key_is_refused(zotero, linker, cookjohn):
+def test_a_malformed_collection_key_is_refused(zotero, session):
     src, _ = _setup(zotero)
     with pytest.raises(WriteBlocked) as excinfo:
         move_items_between_collections(
-            src, "too-short", ["AAAA1111"], linker=linker, cookjohn=cookjohn, store=zotero.store()
+            src, "too-short", ["AAAA1111"], session=session
         )
     assert excinfo.value.code == Reason.MALFORMED_ITEM_KEY
 
@@ -156,7 +152,7 @@ def test_a_malformed_collection_key_is_refused(zotero, linker, cookjohn):
 # --------------------------------------------------------------------------
 
 
-def test_a_failing_remove_rolls_the_add_back(zotero, linker, cookjohn):
+def test_a_failing_remove_rolls_the_add_back(zotero, cookjohn, session):
     """The library must end exactly where it started, and the code must say so.
 
     `rolled_back` is a DIFFERENT code from `partial_apply` on purpose: rolled-back means
@@ -175,7 +171,7 @@ def test_a_failing_remove_rolls_the_add_back(zotero, linker, cookjohn):
     cookjohn.call = fail_the_remove
     with pytest.raises(WriteBlocked) as excinfo:
         move_items_between_collections(
-            src, dst, ["AAAA1111"], linker=linker, cookjohn=cookjohn, store=zotero.store()
+            src, dst, ["AAAA1111"], session=session
         )
 
     assert excinfo.value.code == Reason.ROLLED_BACK
@@ -184,7 +180,7 @@ def test_a_failing_remove_rolls_the_add_back(zotero, linker, cookjohn):
     assert zotero.collection_members(dst) == []
 
 
-def test_a_failing_rollback_is_reported_as_partial_not_rolled_back(zotero, linker, cookjohn):
+def test_a_failing_rollback_is_reported_as_partial_not_rolled_back(zotero, cookjohn, session):
     """The one path that leaves a state nobody asked for. It must not be quiet."""
     src, dst = _setup(zotero)
     real_call = cookjohn.call
@@ -197,7 +193,7 @@ def test_a_failing_rollback_is_reported_as_partial_not_rolled_back(zotero, linke
     cookjohn.call = fail_every_remove
     with pytest.raises(WriteBlocked) as excinfo:
         move_items_between_collections(
-            src, dst, ["AAAA1111"], linker=linker, cookjohn=cookjohn, store=zotero.store()
+            src, dst, ["AAAA1111"], session=session
         )
     # both removes fail, so the rollback fails too
     assert excinfo.value.code == Reason.PARTIAL_APPLY
@@ -205,7 +201,7 @@ def test_a_failing_rollback_is_reported_as_partial_not_rolled_back(zotero, linke
     assert excinfo.value.detail["undo_manifest"]
 
 
-def test_the_add_happens_before_the_remove(zotero, linker, cookjohn):
+def test_the_add_happens_before_the_remove(zotero, cookjohn, session):
     """Order is deliberate. The intermediate state must be "in both" -- recoverable and
     visible -- never "in neither", which looks like the items vanished."""
     src, dst = _setup(zotero)
@@ -218,6 +214,6 @@ def test_the_add_happens_before_the_remove(zotero, linker, cookjohn):
 
     cookjohn.call = record
     move_items_between_collections(
-        src, dst, ["AAAA1111"], linker=linker, cookjohn=cookjohn, store=zotero.store()
+        src, dst, ["AAAA1111"], session=session
     )
     assert seen.index("add_items_to_collection") < seen.index("remove_items_from_collection")

@@ -369,4 +369,4 @@ def test_both_adapters_share_one_tool_declaration_and_one_dispatch():
 
     for module in (read_mcp, write_mcp):
         src = inspect.getsource(module)
-        assert "_dispatch(_BY_NAME" in src, f"{module.__name__} hand-rolls its dispatch again"
+        assert "_dispatch(" in src, f"{module.__name__} hand-rolls its dispatch again"

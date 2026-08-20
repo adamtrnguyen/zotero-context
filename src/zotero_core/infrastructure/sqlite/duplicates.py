@@ -156,3 +156,34 @@ def check_duplicate(
     soft = [s for s in live if s["signal"] == "title+author"]
     verdict = "block" if hard else ("warn" if soft else "ok")
     return {"verdict": verdict, "signals": signals, "read_mode": read_mode}
+
+
+class CatalogueDuplicateFinder:
+    """Satisfies `domain.ports.duplicates.DuplicateFinder` against a real catalogue.
+
+    Holds the store so the port's `check` needs no `store` argument -- the application
+    asks the question, and which catalogue answers it is composition, decided in
+    `interfaces/factory.py`. Delegates to `check_duplicate` above, which is unchanged and
+    still the implementation.
+    """
+
+    def __init__(self, store=None):
+        self.store = store
+
+    def check(
+        self,
+        *,
+        title: str | None = None,
+        doi: str | None = None,
+        isbn: str | None = None,
+        calibre_uuid: str | None = None,
+        creators: list[dict[str, str]] | tuple[dict[str, str], ...] = (),
+    ) -> dict:
+        return check_duplicate(
+            self.store,
+            title=title,
+            doi=doi,
+            isbn=isbn,
+            calibre_uuid=calibre_uuid,
+            creators=creators,
+        )

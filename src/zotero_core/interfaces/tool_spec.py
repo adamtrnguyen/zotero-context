@@ -67,7 +67,13 @@ class WriteToolSpec(ToolSpec):
     transport: str = "cookjohn"
 
 
-def dispatch(index: Mapping[str, ToolSpec], name: str, arguments: dict[str, Any]) -> Any:
+def dispatch(
+    index: Mapping[str, ToolSpec],
+    name: str,
+    arguments: dict[str, Any],
+    *,
+    extra: dict[str, Any] | None = None,
+) -> Any:
     """Route one tool call to its verb. Raises rather than returning an envelope.
 
     `Mapping`, not `dict`, and that is not style: `dict` is INVARIANT in its value type, so
@@ -110,4 +116,8 @@ def dispatch(index: Mapping[str, ToolSpec], name: str, arguments: dict[str, Any]
         for key, value in arguments.items()
         if value is not None or key in spec.required
     }
-    return spec.verb(**call_args)
+    # `extra` is what the ADAPTER injects, never what the client sent: the write side
+    # passes the `WriteSession` built by `interfaces/factory.py`. It is merged after the
+    # unknown-argument check on purpose -- a session is not a tool parameter, so it must
+    # not appear in `properties`, and a client must not be able to supply one.
+    return spec.verb(**call_args, **(extra or {}))

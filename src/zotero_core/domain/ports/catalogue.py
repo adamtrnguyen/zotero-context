@@ -22,7 +22,11 @@ class Catalogue(Protocol):
     """Read-only access to the Zotero catalogue, as the write gates use it."""
 
     #: Where the database is — `copy_database` needs it for the pre-write backup.
-    db_path: str | Path
+    #: ⚠ `Path`, NOT `str | Path`. A Protocol ATTRIBUTE is invariant, so declaring the
+    #: wider union means an implementation offering only `Path` does not satisfy it —
+    #: which `ty` caught against `ZoteroItemStore`. A port states what implementations
+    #: provide; widening it here would have made it unimplementable.
+    db_path: Path
     busy_timeout_ms: int
 
     def item_states(self, keys: list[str] | tuple[str, ...]) -> Any: ...

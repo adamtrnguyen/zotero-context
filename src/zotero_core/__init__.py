@@ -82,12 +82,23 @@ __version__ = "0.2.0"
 # this package deviates on purpose because `__all__` IS its published API.
 _LAZY_WRITE_VERBS = ("import_attachment", "update_metadata", "write_note")
 
+#: The composition root. Published because the verbs above now REQUIRE a `WriteSession`,
+#: so a consumer needs a way to build one -- `youtube2zotero` calls this once per run.
+#: Lazy for the same reason as the verbs: it imports `interfaces`, which sits above
+#: everything, and an eager import here would put that in every layer's import graph.
+_LAZY_FACTORY = ("build_write_session",)
+
 
 def __getattr__(name: str):
+    source = None
     if name in _LAZY_WRITE_VERBS:
+        source = "zotero_core.application.services.verbs"
+    elif name in _LAZY_FACTORY:
+        source = "zotero_core.interfaces.factory"
+    if source:
         import importlib
 
-        value = getattr(importlib.import_module("zotero_core.application.services.verbs"), name)
+        value = getattr(importlib.import_module(source), name)
         globals()[name] = value  # cached: __getattr__ is not consulted again
         return value
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
@@ -136,4 +147,5 @@ __all__ = [
     "import_attachment",
     "update_metadata",
     "write_note",
+    "build_write_session",
 ]

@@ -30,38 +30,22 @@ not blocked by a missing linker and a trash is not blocked by a missing cookjohn
 
 from __future__ import annotations
 
-import urllib.error
-import urllib.request
-
 from zotero_core.domain.errors import Reason, WriteBlocked
-from zotero_core.infrastructure.transports.cookjohn import CookjohnClient
-from zotero_core.infrastructure.transports.linker import LinkerClient
+from zotero_core.domain.ports.write_transport import Cookjohn, Linker
+from zotero_core.domain.ports.zotero_probe import ZoteroProbe
 
-ZOTERO_SERVER_URL = "http://127.0.0.1:23119/"
-
-
-def zotero_is_running(url: str = ZOTERO_SERVER_URL, *, timeout: float = 5.0) -> bool:
-    """True if Zotero's built-in HTTP server answers at all.
-
-    ANY reply counts, including 404 and 400. The question is whether something is
-    listening on Zotero's port, not whether it likes the request -- Zotero's server
-    404s an unknown path, and treating that as "not running" would make the probe
-    report the opposite of the truth.
-    """
-    try:
-        urllib.request.urlopen(url, timeout=timeout)
-        return True
-    except urllib.error.HTTPError:
-        return True
-    except OSError:
-        return False
+# ⚠ `zotero_is_running` AND `ZOTERO_SERVER_URL` LEFT THIS MODULE. The function called
+# `urllib.request.urlopen` directly, which put network I/O in the application layer and
+# left the test suite no way in except `monkeypatch.setattr(".. .zotero_is_running", ...)`
+# at three sites. Both now live in `infrastructure/probe.py` behind `ZoteroProbe`.
 
 
 def require_zotero(
     *,
     needs: tuple[str, ...] = ("linker",),
-    linker: LinkerClient | None = None,
-    cookjohn: CookjohnClient | None = None,
+    linker: Linker,
+    cookjohn: Cookjohn | None = None,
+    probe: ZoteroProbe,
 ) -> dict:
     """Refuse unless Zotero is running with the plugins this operation needs.
 
@@ -72,9 +56,11 @@ def require_zotero(
     for transport in needs:
         try:
             if transport == "linker":
-                info["linker"] = (linker or LinkerClient()).ping()
+                info["linker"] = linker.ping()
             elif transport == "cookjohn":
-                info["cookjohn"] = (cookjohn or CookjohnClient()).ping()
+                if cookjohn is None:
+                    raise ValueError("this operation needs cookjohn, which was not provided")
+                info["cookjohn"] = cookjohn.ping()
             else:
                 raise ValueError(f"unknown transport {transport!r}")
         except WriteBlocked as exc:
@@ -84,12 +70,12 @@ def require_zotero(
             if exc.code in (
                 Reason.ZOTERO_NOT_RUNNING,
                 Reason.COOKJOHN_NOT_INSTALLED,
-            ) and not zotero_is_running():
+            ) and not probe.is_running():
                 raise WriteBlocked(
                     Reason.ZOTERO_NOT_RUNNING,
                     "Zotero is not running — every write channel is code executing "
                     "inside the application, so there is no way in while it is closed",
-                    {"needed": list(needs), "probe": ZOTERO_SERVER_URL},
+                    {"needed": list(needs), "probe": probe.url},
                 ) from exc
             raise
     return info

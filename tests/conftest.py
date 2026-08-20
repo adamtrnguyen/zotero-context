@@ -748,3 +748,40 @@ def zotero_up_plugin_missing(monkeypatch):
         raise urllib.error.HTTPError(target, 404, "Not Found", {}, io.BytesIO(b""))
 
     monkeypatch.setattr("urllib.request.urlopen", _open)
+
+
+class StubProbe:
+    """Satisfies `domain.ports.zotero_probe.ZoteroProbe` without touching the network.
+
+    Replaces three `monkeypatch.setattr(".. .write_mcp.zotero_is_running", lambda: True)`
+    calls and the `urlopen` patching that backed them. A stub passed in beats a global
+    rewritten from under the code: this one is visible in the test's own arguments.
+    """
+
+    url = "http://127.0.0.1:23119/"
+
+    def __init__(self, running: bool = True):
+        self.running = running
+
+    def is_running(self) -> bool:
+        return self.running
+
+
+@pytest.fixture
+def session(zotero, linker, cookjohn, tmp_path):
+    """One `WriteSession` wired to the fakes and the temp library.
+
+    THE POINT OF THE WHOLE PORT REFACTOR. Every verb takes this; nothing reaches a
+    module global; no test rewrites `f"{module}.CookjohnClient"`. Built through the real
+    composition root so the wiring under test is the wiring that ships.
+    """
+    from zotero_core.infrastructure.journal import FileJournal
+    from zotero_core.interfaces.factory import build_write_session
+
+    return build_write_session(
+        linker=linker,
+        cookjohn=cookjohn,
+        store=zotero.store(),
+        journal=FileJournal(str(tmp_path / "journal")),
+        probe=StubProbe(running=True),
+    )

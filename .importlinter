@@ -42,12 +42,12 @@ include_external_packages = True
 # `zotero_core/__init__.py` is deliberately NOT a layer: it is the published API and
 # imports across every layer by design.
 [importlinter:contract:layers]
-name = interfaces above application above infrastructure above domain
+name = interfaces above infrastructure above application above domain
 type = layers
 layers =
     zotero_core.interfaces
-    zotero_core.application
     zotero_core.infrastructure
+    zotero_core.application
     zotero_core.domain
 
 # --------------------------------------------------------------------------

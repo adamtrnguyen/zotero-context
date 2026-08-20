@@ -79,17 +79,19 @@ def test_parse_inverse_refuses_anything_that_is_not_a_literal_call(hostile):
         undo_mod.parse_inverse(hostile)
 
 
-def test_a_hostile_manifest_is_listed_as_unreplayable_rather_than_run(journal):
+def test_a_hostile_manifest_is_listed_as_unreplayable_rather_than_run(journal, session):
     _manifest(journal, "trash_items", "20260819-120000-000001", "__import__('os').system('x')")
-    entries = undo_mod.list_entries(str(journal))
+    entries = undo_mod.list_entries(str(journal), journal=session.journal)
     assert entries[0].replayable is False
     with pytest.raises(WriteBlocked):
-        undo_mod.undo(journal_dir=str(journal))
+        undo_mod.undo(journal_dir=str(journal), session=session)
 
 
-def test_an_unknown_verb_is_not_replayable(journal):
+def test_an_unknown_verb_is_not_replayable(journal, session):
     _manifest(journal, "trash_items", "20260819-120000-000001", "drop_everything(['A'])")
-    assert undo_mod.list_entries(str(journal))[0].blocked_reason.startswith("`drop_everything`")
+    assert undo_mod.list_entries(
+        str(journal), journal=session.journal
+    )[0].blocked_reason.startswith("`drop_everything`")
 
 
 # --------------------------------------------------------------------------
@@ -97,7 +99,7 @@ def test_an_unknown_verb_is_not_replayable(journal):
 # --------------------------------------------------------------------------
 
 
-def test_entries_are_newest_first_by_STAMP_not_by_filename(journal):
+def test_entries_are_newest_first_by_STAMP_not_by_filename(journal, session):
     """REGRESSION, found by running this against the real journal.
 
     `write_manifest` names files `{op}-{stamp}.json`, so the OP NAME comes first and a
@@ -108,20 +110,20 @@ def test_entries_are_newest_first_by_STAMP_not_by_filename(journal):
     _manifest(journal, "update_metadata", "20260819-004659-000001", "add_tags('AAAA1111', ['x'])")
     _manifest(journal, "trash_items", "20260819-154733-000001", "restore_items(['BBBB2222'])")
 
-    ops = [e.op for e in undo_mod.list_entries(str(journal))]
+    ops = [e.op for e in undo_mod.list_entries(str(journal), journal=session.journal)]
     assert ops == ["trash_items", "update_metadata"], "sorted by name, not by time"
 
 
-def test_a_manifest_with_no_inverse_is_listed_but_blocked(journal):
+def test_a_manifest_with_no_inverse_is_listed_but_blocked(journal, session):
     """`write_note(action='update')` deliberately does not capture the previous body, and
     `update_metadata` records None when nothing was overwritten."""
     _manifest(journal, "update_metadata", "20260819-120000-000001", None)
-    entry = undo_mod.list_entries(str(journal))[0]
+    entry = undo_mod.list_entries(str(journal), journal=session.journal)[0]
     assert entry.replayable is False
     assert "no inverse recorded" in entry.blocked_reason
 
 
-def test_a_placeholder_inverse_is_blocked(journal):
+def test_a_placeholder_inverse_is_blocked(journal, session):
     """`delete_collection`'s inverse is a template: recreating a collection gives it a
     NEW key, so the second half cannot be written before the first half runs."""
     _manifest(
@@ -130,26 +132,26 @@ def test_a_placeholder_inverse_is_blocked(journal):
         "20260819-120000-000001",
         "create_collection('X') then add_items_to_collection(<new key>, ['A'])",
     )
-    entry = undo_mod.list_entries(str(journal))[0]
+    entry = undo_mod.list_entries(str(journal), journal=session.journal)[0]
     assert entry.replayable is False
     assert "template" in entry.blocked_reason
 
 
-def test_a_truncated_manifest_is_reported_not_hidden(journal):
+def test_a_truncated_manifest_is_reported_not_hidden(journal, session):
     (journal / "trash_items-20260819-120000-000001.json").write_text("{not json")
-    entry = undo_mod.list_entries(str(journal))[0]
+    entry = undo_mod.list_entries(str(journal), journal=session.journal)[0]
     assert entry.replayable is False
     assert "unreadable" in entry.blocked_reason
 
 
-def test_an_empty_journal_lists_nothing(journal):
-    assert undo_mod.list_entries(str(journal)) == []
+def test_an_empty_journal_lists_nothing(journal, session):
+    assert undo_mod.list_entries(str(journal), journal=session.journal) == []
 
 
-def test_limit_is_respected(journal):
+def test_limit_is_respected(journal, session):
     for n in range(5):
         _manifest(journal, "trash_items", f"20260819-12000{n}-000001", "restore_items(['A'])")
-    assert len(undo_mod.list_entries(str(journal), limit=2)) == 2
+    assert len(undo_mod.list_entries(str(journal), limit=2, journal=session.journal)) == 2
 
 
 # --------------------------------------------------------------------------
@@ -157,32 +159,32 @@ def test_limit_is_respected(journal):
 # --------------------------------------------------------------------------
 
 
-def test_dry_run_resolves_everything_and_calls_nothing(journal, zotero, linker, cookjohn):
+def test_dry_run_resolves_everything_and_calls_nothing(journal, zotero, session):
     zotero.add("AAAA1111")
     zotero.trash("AAAA1111")
     _manifest(journal, "trash_items", "20260819-120000-000001", "restore_items(['AAAA1111'])")
 
-    result = undo_mod.undo(journal_dir=str(journal), dry_run=True)
+    result = undo_mod.undo(journal_dir=str(journal), dry_run=True, session=session)
     assert result["op"] == "undo:dry_run"
     assert result["would_call"]["verb"] == "restore_items"
     # nothing moved
     assert zotero.is_trashed("AAAA1111")
 
 
-def test_undo_replays_the_inverse_for_real(journal, zotero, linker, cookjohn):
+def test_undo_replays_the_inverse_for_real(journal, zotero, session):
     zotero.add("AAAA1111")
     zotero.trash("AAAA1111")
     _manifest(journal, "trash_items", "20260819-120000-000001", "restore_items(['AAAA1111'])")
 
     result = undo_mod.undo(
-        journal_dir=str(journal), linker=linker, cookjohn=cookjohn, store=zotero.store()
+        journal_dir=str(journal), session=session
     )
     assert result["ok"] is True
     assert result["undone"]["undoing"] == "trash_items"
     assert not zotero.is_trashed("AAAA1111")
 
 
-def test_undo_picks_the_most_recent_REPLAYABLE_entry(journal, zotero, linker, cookjohn):
+def test_undo_picks_the_most_recent_REPLAYABLE_entry(journal, zotero, session):
     """A blocked entry must not shadow a usable one behind it."""
     zotero.add("AAAA1111")
     zotero.trash("AAAA1111")
@@ -190,12 +192,12 @@ def test_undo_picks_the_most_recent_REPLAYABLE_entry(journal, zotero, linker, co
     _manifest(journal, "write_note", "20260819-130000-000001", None)  # newer, blocked
 
     result = undo_mod.undo(
-        journal_dir=str(journal), linker=linker, cookjohn=cookjohn, store=zotero.store()
+        journal_dir=str(journal), session=session
     )
     assert result["undone"]["undoing"] == "trash_items"
 
 
-def test_undo_can_target_one_manifest_by_name(journal, zotero, linker, cookjohn):
+def test_undo_can_target_one_manifest_by_name(journal, zotero, session):
     zotero.add("AAAA1111")
     zotero.add("BBBB2222")
     zotero.trash("AAAA1111")
@@ -206,22 +208,22 @@ def test_undo_can_target_one_manifest_by_name(journal, zotero, linker, cookjohn)
     _manifest(journal, "trash_items", "20260819-130000-000001", "restore_items(['BBBB2222'])")
 
     undo_mod.undo(
-        older.name, journal_dir=str(journal), linker=linker, cookjohn=cookjohn, store=zotero.store()
+        older.name, journal_dir=str(journal), session=session
     )
     assert not zotero.is_trashed("AAAA1111")
     assert zotero.is_trashed("BBBB2222"), "targeted the wrong manifest"
 
 
-def test_undo_refuses_when_nothing_is_replayable(journal):
+def test_undo_refuses_when_nothing_is_replayable(journal, session):
     _manifest(journal, "write_note", "20260819-120000-000001", None)
     with pytest.raises(WriteBlocked) as excinfo:
-        undo_mod.undo(journal_dir=str(journal))
+        undo_mod.undo(journal_dir=str(journal), session=session)
     assert "no replayable manifest" in str(excinfo.value)
     # and it says WHY each candidate was rejected
     assert excinfo.value.detail["blocked"][0]["why"]
 
 
-def test_undo_refuses_an_unknown_manifest_name(journal):
+def test_undo_refuses_an_unknown_manifest_name(journal, session):
     with pytest.raises(WriteBlocked) as excinfo:
-        undo_mod.undo("nope.json", journal_dir=str(journal))
+        undo_mod.undo("nope.json", journal_dir=str(journal), session=session)
     assert "no manifest matching" in str(excinfo.value)

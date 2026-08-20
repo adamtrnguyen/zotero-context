@@ -77,9 +77,9 @@ from zotero_core.application.services.collections import (
     remove_items_from_collection,
     update_collection,
 )
-from zotero_core.application.services.liveness import ZOTERO_SERVER_URL, zotero_is_running
 from zotero_core.application.services.replay import list_entries as _list_entries
 from zotero_core.application.services.replay import undo as _undo
+from zotero_core.application.services.session import WriteSession
 from zotero_core.application.services.verbs import (
     add_tags,
     check_keys,
@@ -97,9 +97,7 @@ from zotero_core.application.services.verbs import (
 )
 from zotero_core.domain.entities.models import to_jsonable
 from zotero_core.domain.errors import WriteBlocked
-from zotero_core.infrastructure.sqlite.items import ZoteroItemStore
-from zotero_core.infrastructure.transports.cookjohn import CookjohnClient
-from zotero_core.infrastructure.transports.linker import LinkerClient
+from zotero_core.interfaces.factory import build_write_session
 from zotero_core.interfaces.tool_spec import WriteToolSpec as _ToolSpec
 from zotero_core.interfaces.tool_spec import dispatch as _dispatch
 
@@ -135,9 +133,9 @@ _COPY_DB = {
 }
 
 
-def list_undo(limit: int = 25) -> dict:
+def list_undo(limit: int = 25, *, session: WriteSession) -> dict:
     """The write journal, newest first, with why each entry can or cannot be replayed."""
-    entries = _list_entries(limit=limit)
+    entries = _list_entries(limit=limit, journal=session.journal)
     return {
         "ok": True,
         "op": "list_undo",
@@ -157,11 +155,13 @@ def list_undo(limit: int = 25) -> dict:
     }
 
 
-def undo_write(manifest: str | None = None, dry_run: bool = False) -> dict:
-    return _undo(manifest, dry_run=dry_run)
+def undo_write(
+    manifest: str | None = None, dry_run: bool = False, *, session: WriteSession
+) -> dict:
+    return _undo(manifest, dry_run=dry_run, session=session)
 
 
-def preflight(item_keys: list[str] | None = None) -> dict:
+def preflight(item_keys: list[str] | None = None, *, session: WriteSession) -> dict:
     """Probe both plugins and optionally resolve keys, WITHOUT writing anything.
 
     `require_zotero` raises on the first transport that fails, which is right for a
@@ -177,11 +177,11 @@ def preflight(item_keys: list[str] | None = None) -> dict:
     report: dict[str, Any] = {
         "ok": True,
         "op": "preflight",
-        "zotero_running": zotero_is_running(),
-        "probe": ZOTERO_SERVER_URL,
+        "zotero_running": session.probe.is_running(),
+        "probe": session.probe.url,
         "transports": {},
     }
-    for name, client in (("linker", LinkerClient()), ("cookjohn", CookjohnClient())):
+    for name, client in (("linker", session.linker), ("cookjohn", session.cookjohn)):
         try:
             report["transports"][name] = {"available": True, "info": client.ping()}
         except WriteBlocked as exc:
@@ -191,7 +191,7 @@ def preflight(item_keys: list[str] | None = None) -> dict:
     if item_keys is not None:
         try:
             keys = check_keys(item_keys)
-            states = require_items(ZoteroItemStore(), keys)
+            states = require_items(session.store, keys)
             report["items"] = {
                 "read_mode": states.read_mode,
                 "resolved": [
@@ -586,9 +586,25 @@ TOOLS: tuple[_ToolSpec, ...] = (
 _BY_NAME = {spec.name: spec for spec in TOOLS}
 
 
-def call_writes(name: str, arguments: dict[str, Any]) -> Any:
-    """Dispatch one tool call. Thin by design -- the logic is shared, see `tool_spec`."""
-    return _dispatch(_BY_NAME, name, arguments)
+def call_writes(
+    name: str, arguments: dict[str, Any], *, session: WriteSession | None = None
+) -> Any:
+    """Dispatch one tool call. Thin by design -- the logic is shared, see `tool_spec`.
+
+    `session` is the injection point the MCP surface used to lack. Its absence is what
+    forced the test suite to rewrite module globals: the fixture's comment read "it is the
+    only way in, because the MCP surface has no injection parameter by design". Defaulting
+    it HERE is correct in a way defaulting it in the verbs was not -- this is the
+    composition root's own layer, which is the one place allowed to name a concrete
+    adapter.
+    """
+    # ONE session per call, built by the composition root. The verbs take it as a
+    # required argument now, so there is no module global for a test to rewrite and no
+    # `or CookjohnClient()` hiding inside the application layer.
+    return _dispatch(
+        _BY_NAME, name, arguments,
+        extra={"session": session if session is not None else build_write_session()},
+    )
 
 
 def run() -> None:

@@ -22,21 +22,9 @@ member key, which together are enough to rebuild it by hand.
 from __future__ import annotations
 
 from zotero_core.application.results import ok
-from zotero_core.application.services.liveness import require_zotero
+from zotero_core.application.services.session import WriteSession
 from zotero_core.domain.errors import Reason, WriteBlocked
 from zotero_core.domain.services.identity import is_key
-from zotero_core.infrastructure.journal import write_manifest
-from zotero_core.infrastructure.sqlite.items import ZoteroItemStore
-from zotero_core.infrastructure.transports.cookjohn import CookjohnClient, find_key
-from zotero_core.infrastructure.transports.linker import LinkerClient
-
-
-def _session(linker, cookjohn, store):
-    return (
-        linker or LinkerClient(),
-        cookjohn or CookjohnClient(),
-        store or ZoteroItemStore(),
-    )
 
 
 def _check_collection_key(collection_key: str) -> str:
@@ -106,9 +94,7 @@ def create_collection(
     name: str,
     *,
     parent_collection: str | None = None,
-    linker=None,
-    cookjohn=None,
-    store=None,
+    session: WriteSession,
 ) -> dict:
     """Create a collection, refusing a name that already exists at the same level.
 
@@ -118,14 +104,13 @@ def create_collection(
     A second collection with that name makes which one they find depend on iteration
     order, and half the imports quietly land in the wrong folder.
     """
-    linker, cookjohn, store = _session(linker, cookjohn, store)
     if not (name or "").strip():
         raise WriteBlocked(Reason.MISSING_REQUIRED_FIELD, "collection name is required")
     if parent_collection:
         _check_collection_key(parent_collection)
-    info = require_zotero(needs=("cookjohn",), linker=linker, cookjohn=cookjohn)
+    info = session.require("cookjohn")
 
-    existing = cookjohn.call("search_collections", {"q": name, "limit": 50})
+    existing = session.cookjohn.call("search_collections", {"q": name, "limit": 50})
     clashes = _same_name_siblings(existing, name, parent_collection)
     if clashes:
         raise WriteBlocked(
@@ -138,8 +123,8 @@ def create_collection(
     arguments: dict = {"name": name}
     if parent_collection:
         arguments["parentCollection"] = parent_collection
-    reply = cookjohn.call("create_collection", arguments)
-    key = find_key(reply, prefer=("collectionKey", "key"))
+    reply = session.cookjohn.call("create_collection", arguments)
+    key = session.cookjohn.find_key(reply, prefer=("collectionKey", "key"))
     if not key:
         raise WriteBlocked(
             Reason.COOKJOHN_RETURNED_NO_KEY,
@@ -153,7 +138,9 @@ def create_collection(
         name=name,
         parent_collection=parent_collection,
         cookjohn=reply,
-        verification=_verify_collection(store, key, name=name, parent_key=parent_collection),
+        verification=_verify_collection(
+            session.collections, key, name=name, parent_key=parent_collection
+        ),
         undo_call=f'delete_collection({key!r})',
         versions=info,
     )
@@ -191,9 +178,7 @@ def update_collection(
     name: str | None = None,
     parent_collection: str | None = None,
     journal_dir: str | None = None,
-    linker=None,
-    cookjohn=None,
-    store=None,
+    session: WriteSession,
 ) -> dict:
     """Rename or re-parent a collection, journalling the previous name and parent.
 
@@ -202,7 +187,6 @@ def update_collection(
     mean different things here, and collapsing them would make every rename also
     move the collection to the root.
     """
-    linker, cookjohn, store = _session(linker, cookjohn, store)
     _check_collection_key(collection_key)
     if name is None and parent_collection is None:
         raise WriteBlocked(
@@ -210,10 +194,10 @@ def update_collection(
             "neither name nor parent_collection given — refusing a no-op update",
             {"collection_key": collection_key},
         )
-    info = require_zotero(needs=("cookjohn",), linker=linker, cookjohn=cookjohn)
-    before = _find_collection(cookjohn, collection_key)
+    info = session.require("cookjohn")
+    before = _find_collection(session.cookjohn, collection_key)
 
-    manifest = write_manifest(
+    manifest = session.journal.write_manifest(
         "update_collection",
         before={
             "collection_key": collection_key,
@@ -231,7 +215,7 @@ def update_collection(
         arguments["name"] = name
     if parent_collection is not None:
         arguments["parentCollection"] = parent_collection
-    reply = cookjohn.call("update_collection", arguments)
+    reply = session.cookjohn.call("update_collection", arguments)
     return ok(
         'update_collection',
         transport='cookjohn',
@@ -241,14 +225,14 @@ def update_collection(
         parent_collection=parent_collection,
         cookjohn=reply,
         verification=_verify_collection(
-            store, collection_key, name=name, parent_key=parent_collection
+            session.collections, collection_key, name=name, parent_key=parent_collection
         ),
         undo_manifest=manifest,
         versions=info,
     )
 
 
-def _verify_collection(store, collection_key: str, *, name=None, parent_key=None) -> dict:
+def _verify_collection(collections, collection_key: str, *, name=None, parent_key=None) -> dict:
     """Confirm a collection exists and, where given, carries the expected name/parent.
 
     `name=None` means "do not check the name" rather than "expect no name" -- the same
@@ -256,10 +240,7 @@ def _verify_collection(store, collection_key: str, *, name=None, parent_key=None
     the same reason: `update_collection` may rename, re-parent, or both, and checking a
     field the caller never set would invent a failure.
     """
-    from zotero_core.infrastructure.sqlite.collections import ZoteroCollectionStore
-
-    reader = ZoteroCollectionStore(store.db_path, busy_timeout_ms=store.busy_timeout_ms)
-    tree = reader.tree()
+    tree = collections.tree()
     node = next((n for n in tree.flat() if n.key == collection_key), None)
     if node is None:
         return {
@@ -280,15 +261,12 @@ def _verify_collection(store, collection_key: str, *, name=None, parent_key=None
     return {"verified": True, "read_mode": tree.read_mode, "path": node.path}
 
 
-def _members_of(store, collection_key: str) -> tuple[set[str], str]:
-    from zotero_core.infrastructure.sqlite.collections import ZoteroCollectionStore
-
-    reader = ZoteroCollectionStore(store.db_path, busy_timeout_ms=store.busy_timeout_ms)
-    members = reader.items(collection_key, include_trashed=True)
+def _members_of(collections, collection_key: str) -> tuple[set[str], str]:
+    members = collections.items(collection_key, include_trashed=True)
     return {m.item_key for m in members.members}, members.read_mode
 
 
-def _verify_membership(store, collection_key: str, keys, *, present: bool) -> dict:
+def _verify_membership(collections, collection_key: str, keys, *, present: bool) -> dict:
     """Confirm each key IS (or is NOT) in the collection after the write.
 
     `present=True` for a filing, False for an unfiling -- one function because the
@@ -303,7 +281,7 @@ def _verify_membership(store, collection_key: str, keys, *, present: bool) -> di
     (the items end up filed in the target and never removed from the source) rather than
     merely a pointless one.
     """
-    after, read_mode = _members_of(store, collection_key)
+    after, read_mode = _members_of(collections, collection_key)
     wanted = set(keys)
     wrong = sorted(wanted - after) if present else sorted(wanted & after)
     if not wrong:
@@ -319,7 +297,7 @@ def _verify_membership(store, collection_key: str, keys, *, present: bool) -> di
     }
 
 
-def _verify_gone(store, collection_key: str) -> dict:
+def _verify_gone(collections, collection_key: str) -> dict:
     """Confirm a collection is ABSENT. The one verification that inverts.
 
     Every other read-back asks "is the thing I wrote there?"; this asks "is the thing I
@@ -332,10 +310,7 @@ def _verify_gone(store, collection_key: str) -> dict:
     the caller to rebuild something that is already gone, which for a collection means
     recreating it under a NEW key and re-filing every member.
     """
-    from zotero_core.infrastructure.sqlite.collections import ZoteroCollectionStore
-
-    reader = ZoteroCollectionStore(store.db_path, busy_timeout_ms=store.busy_timeout_ms)
-    tree = reader.tree()
+    tree = collections.tree()
     still_there = any(node.key == collection_key for node in tree.flat())
     if not still_there:
         return {"verified": True, "read_mode": tree.read_mode}
@@ -356,9 +331,7 @@ def delete_collection(
     delete_items: bool = False,
     force: bool = False,
     journal_dir: str | None = None,
-    linker=None,
-    cookjohn=None,
-    store=None,
+    session: WriteSession,
 ) -> dict:
     """Delete a collection. Items stay in the library unless `delete_items=True`.
 
@@ -372,11 +345,10 @@ def delete_collection(
     manifest records name, parent and every member key -- enough to rebuild the
     collection by hand, which is the only undo there is.
     """
-    linker, cookjohn, store = _session(linker, cookjohn, store)
     _check_collection_key(collection_key)
-    info = require_zotero(needs=("cookjohn",), linker=linker, cookjohn=cookjohn)
-    before = _find_collection(cookjohn, collection_key)
-    members = _member_keys(cookjohn, collection_key)
+    info = session.require("cookjohn")
+    before = _find_collection(session.cookjohn, collection_key)
+    members = _member_keys(session.cookjohn, collection_key)
 
     if delete_items and not force:
         raise WriteBlocked(
@@ -392,7 +364,7 @@ def delete_collection(
         )
 
     name = before.get("name") or before.get("collectionName")
-    manifest = write_manifest(
+    manifest = session.journal.write_manifest(
         "delete_collection",
         before={
             "collection_key": collection_key,
@@ -411,7 +383,7 @@ def delete_collection(
     arguments: dict = {"collectionKey": collection_key}
     if delete_items:
         arguments["deleteItems"] = True
-    reply = cookjohn.call("delete_collection", arguments)
+    reply = session.cookjohn.call("delete_collection", arguments)
     return ok(
         'delete_collection',
         transport='cookjohn',
@@ -420,7 +392,7 @@ def delete_collection(
         members_at_deletion=members,
         items_trashed=bool(delete_items),
         cookjohn=reply,
-        verification=_verify_gone(store, collection_key),
+        verification=_verify_gone(session.collections, collection_key),
         undo_manifest=manifest,
         versions=info,
     )
@@ -430,21 +402,18 @@ def add_items_to_collection(
     collection_key: str,
     item_keys,
     *,
-    linker=None,
-    cookjohn=None,
-    store=None,
+    session: WriteSession,
 ) -> dict:
     """File items into a collection. No manifest — the inverse is a removal."""
     from zotero_core.application.services.verbs import check_keys, require_items
 
-    linker, cookjohn, store = _session(linker, cookjohn, store)
     _check_collection_key(collection_key)
     keys = check_keys(item_keys)
-    info = require_zotero(needs=("cookjohn",), linker=linker, cookjohn=cookjohn)
-    require_items(store, keys)
-    _find_collection(cookjohn, collection_key)
-    before_members, _ = _members_of(store, collection_key)
-    reply = cookjohn.call(
+    info = session.require("cookjohn")
+    require_items(session.store, keys)
+    _find_collection(session.cookjohn, collection_key)
+    before_members, _ = _members_of(session.collections, collection_key)
+    reply = session.cookjohn.call(
         "add_items_to_collection", {"collectionKey": collection_key, "itemKeys": keys}
     )
     return ok(
@@ -456,7 +425,7 @@ def add_items_to_collection(
         # "I filed 3 items" from "I filed 1 and re-filed 2".
         already_present=sorted(set(keys) & before_members),
         cookjohn=reply,
-        verification=_verify_membership(store, collection_key, keys, present=True),
+        verification=_verify_membership(session.collections, collection_key, keys, present=True),
         undo_call=f'remove_items_from_collection({collection_key!r}, {keys!r})',
         versions=info,
     )
@@ -467,9 +436,7 @@ def remove_items_from_collection(
     item_keys,
     *,
     journal_dir: str | None = None,
-    linker=None,
-    cookjohn=None,
-    store=None,
+    session: WriteSession,
 ) -> dict:
     """Unfile items from a collection. The items stay in the library.
 
@@ -479,21 +446,20 @@ def remove_items_from_collection(
     """
     from zotero_core.application.services.verbs import check_keys, require_items
 
-    linker, cookjohn, store = _session(linker, cookjohn, store)
     _check_collection_key(collection_key)
     keys = check_keys(item_keys)
-    info = require_zotero(needs=("cookjohn",), linker=linker, cookjohn=cookjohn)
-    require_items(store, keys)
-    _find_collection(cookjohn, collection_key)
+    info = session.require("cookjohn")
+    require_items(session.store, keys)
+    _find_collection(session.cookjohn, collection_key)
 
-    before_members, _ = _members_of(store, collection_key)
-    manifest = write_manifest(
+    before_members, _ = _members_of(session.collections, collection_key)
+    manifest = session.journal.write_manifest(
         "remove_items_from_collection",
         before={"collection_key": collection_key, "item_keys": keys},
         inverse=f"add_items_to_collection({collection_key!r}, {keys!r})",
         journal_dir=journal_dir,
     )
-    reply = cookjohn.call(
+    reply = session.cookjohn.call(
         "remove_items_from_collection", {"collectionKey": collection_key, "itemKeys": keys}
     )
     return ok(
@@ -506,7 +472,7 @@ def remove_items_from_collection(
         # item that was not there is itself a no-op.
         not_in_collection=sorted(set(keys) - before_members),
         cookjohn=reply,
-        verification=_verify_membership(store, collection_key, keys, present=False),
+        verification=_verify_membership(session.collections, collection_key, keys, present=False),
         undo_manifest=manifest,
         undo_call=f'add_items_to_collection({collection_key!r}, {keys!r})',
         versions=info,
@@ -520,9 +486,7 @@ def move_items_between_collections(
     *,
     force: bool = False,
     journal_dir: str | None = None,
-    linker=None,
-    cookjohn=None,
-    store=None,
+    session: WriteSession,
 ) -> dict:
     """Move items from one collection to another. ONE verb, ONE manifest, WITH ROLLBACK.
 
@@ -551,9 +515,6 @@ def move_items_between_collections(
     source.
     """
     from zotero_core.application.services.verbs import check_keys, require_items
-    from zotero_core.infrastructure.sqlite.collections import ZoteroCollectionStore
-
-    linker, cookjohn, store = _session(linker, cookjohn, store)
     _check_collection_key(from_collection_key)
     _check_collection_key(to_collection_key)
     if from_collection_key == to_collection_key:
@@ -563,13 +524,15 @@ def move_items_between_collections(
             {"collection_key": from_collection_key},
         )
     keys = check_keys(item_keys)
-    info = require_zotero(needs=("cookjohn",), linker=linker, cookjohn=cookjohn)
-    require_items(store, keys)
-    _find_collection(cookjohn, from_collection_key)
-    _find_collection(cookjohn, to_collection_key)
+    info = session.require("cookjohn")
+    require_items(session.store, keys)
+    _find_collection(session.cookjohn, from_collection_key)
+    _find_collection(session.cookjohn, to_collection_key)
 
-    reader = ZoteroCollectionStore(store.db_path, busy_timeout_ms=store.busy_timeout_ms)
-    before = {m.item_key for m in reader.items(from_collection_key, include_trashed=True).members}
+    before = {
+        m.item_key
+        for m in session.collections.items(from_collection_key, include_trashed=True).members
+    }
     absent = [key for key in keys if key not in before]
     if absent and not force:
         raise WriteBlocked(
@@ -579,7 +542,7 @@ def move_items_between_collections(
             {"not_in_source": absent, "source_holds": sorted(before)},
         )
 
-    manifest = write_manifest(
+    manifest = session.journal.write_manifest(
         "move_items_between_collections",
         before={
             "from_collection_key": from_collection_key,
@@ -594,11 +557,11 @@ def move_items_between_collections(
         journal_dir=journal_dir,
     )
 
-    added = cookjohn.call(
+    added = session.cookjohn.call(
         "add_items_to_collection", {"collectionKey": to_collection_key, "itemKeys": keys}
     )
     try:
-        removed = cookjohn.call(
+        removed = session.cookjohn.call(
             "remove_items_from_collection",
             {"collectionKey": from_collection_key, "itemKeys": keys},
         )
@@ -607,7 +570,7 @@ def move_items_between_collections(
         # caller must be told loudly -- that is the one path here that leaves a state
         # nobody asked for.
         try:
-            cookjohn.call(
+            session.cookjohn.call(
                 "remove_items_from_collection",
                 {"collectionKey": to_collection_key, "itemKeys": keys},
             )
@@ -631,10 +594,12 @@ def move_items_between_collections(
 
     # Re-read BOTH sides. The two-call route verified nothing at all.
     after_source = {
-        m.item_key for m in reader.items(from_collection_key, include_trashed=True).members
+        m.item_key
+        for m in session.collections.items(from_collection_key, include_trashed=True).members
     }
     after_target = {
-        m.item_key for m in reader.items(to_collection_key, include_trashed=True).members
+        m.item_key
+        for m in session.collections.items(to_collection_key, include_trashed=True).members
     }
     still_in_source = sorted(set(keys) & after_source)
     missing_from_target = sorted(set(keys) - after_target)
