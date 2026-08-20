@@ -215,6 +215,29 @@ def test_the_calibre_uuid_stamp_is_appended_not_assigned_over(zotero, linker, co
     assert out["ok"] is True
 
 
+def test_an_import_that_returns_no_key_is_also_a_failure(zotero, linker, tmp_path):
+    """The SIBLING of the test below, and it did not exist until 2026-08-19.
+
+    `import_attachment` put `find_key(reply)` -- which can be None -- straight into its
+    envelope beside `"ok": True`. So cookjohn answering without a key produced a success
+    the caller could not act on, and no way to tell whether the file had been attached.
+    `create_item` has raised for exactly this since it was written; the asymmetry was the
+    bug, and an untested fix is how it would come back.
+    """
+    from zotero_core.write import import_attachment
+
+    zotero.add("PARENT01", title="A Paper")
+    pdf = tmp_path / "paper.pdf"
+    pdf.write_bytes(b"%PDF-1.4\n")
+
+    silent = FakeCookjohn(zotero, no_key=True)
+    with pytest.raises(WriteBlocked) as e:
+        import_attachment(
+            "PARENT01", str(pdf), store=zotero.store(), linker=linker, cookjohn=silent
+        )
+    assert e.value.code == Reason.COOKJOHN_RETURNED_NO_KEY
+
+
 def test_a_create_that_returns_no_key_is_a_failure(zotero, linker):
     """cookjohn can answer without a key. Reporting ok=True would make a no-op
     indistinguishable from a create — calibre-core guards `calibredb` the same way."""
