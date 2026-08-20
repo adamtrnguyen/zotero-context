@@ -631,3 +631,33 @@ def test_a_missing_database_is_an_error_not_an_empty_answer(tmp_path):
 
     with pytest.raises(ZoteroAnnotationError):
         ZoteroItemStore(tmp_path / "absent.sqlite").item_states(["ABCD2345"])
+
+
+# --------------------------------------------------------------------------
+# the isolation itself
+# --------------------------------------------------------------------------
+
+
+def test_the_real_zotero_defaults_are_unreachable_from_a_test():
+    """The guard that protects a real library from 371 tests, asserted rather than assumed.
+
+    `_never_touch_the_real_zotero` is autouse, so this runs inside it. It had an opt-out
+    (`if "real_defaults" in request.fixturenames`) that never worked -- no such fixture
+    was ever defined -- so nothing here was ever verified either. Removed 2026-08-19;
+    this is what replaces it.
+    """
+    from pathlib import Path
+
+    from zotero_core.read import items
+    from zotero_core.write.transports import cookjohn, linker
+
+    assert not Path(items.DEFAULT_ZOTERO_DB).exists()
+    assert ":1/" in linker.DEFAULT_LINKER_URL
+    assert ":1/" in cookjohn.DEFAULT_COOKJOHN_URL
+
+
+def test_opening_a_real_http_connection_from_a_test_raises():
+    import urllib.request
+
+    with pytest.raises(AssertionError, match="real HTTP connection"):
+        urllib.request.urlopen("http://127.0.0.1:23119/")

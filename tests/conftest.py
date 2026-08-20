@@ -628,7 +628,7 @@ def cookjohn(zotero):
 
 
 @pytest.fixture(autouse=True)
-def _never_touch_the_real_zotero(monkeypatch, request):
+def _never_touch_the_real_zotero(monkeypatch):
     """Point every default at nothing, so a test that forgets to inject fails loudly.
 
     Belt and braces with the fixtures above: a verb called with no `store`, `linker` or
@@ -636,9 +636,15 @@ def _never_touch_the_real_zotero(monkeypatch, request):
     path that does not exist, both transport defaults point at a dead port, and
     `urlopen` is made to raise — so such a call cannot reach the live library even by
     accident.
+
+    ⚠ There was an OPT-OUT here until 2026-08-19: `if "real_defaults" in
+    request.fixturenames: return`. It never worked — no fixture of that name was ever
+    defined, so any test requesting it errored on fixture lookup rather than getting
+    live defaults. Removed rather than implemented, deliberately. This guard is the one
+    thing standing between 371 tests and a real library, and an opt-out a test can
+    request in passing is the wrong shape for that: a live-Zotero test should be a
+    visible, deliberate edit to this file, not a keyword in a signature.
     """
-    if "real_defaults" in request.fixturenames:
-        return
     monkeypatch.setattr(
         "zotero_core.read.items.DEFAULT_ZOTERO_DB", Path("/nonexistent/not-a-zotero.sqlite")
     )

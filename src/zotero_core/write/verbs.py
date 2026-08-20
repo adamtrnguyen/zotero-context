@@ -55,6 +55,7 @@ from ..read.items import ZoteroItemStore
 from .errors import Reason, WriteBlocked
 from .journal import copy_database, write_manifest
 from .liveness import require_zotero
+from .results import ok
 from .transports.cookjohn import CookjohnClient, find_key
 from .transports.linker import LinkerClient
 
@@ -258,18 +259,17 @@ def create_item(
             {"reply": reply},
         )
 
-    result = {
-        "ok": True,
-        "op": "create_item",
-        "transport": "cookjohn",
-        "item_key": item_key,
-        "item_type": item_type,
-        "title": fields.get("title"),
-        "duplicate_check": dup,
-        "cookjohn": reply,
-        "undo_call": f"trash_items(['{item_key}'])",
-        "versions": info,
-    }
+    result = ok(
+        'create_item',
+        transport='cookjohn',
+        item_key=item_key,
+        item_type=item_type,
+        title=fields.get('title'),
+        duplicate_check=dup,
+        cookjohn=reply,
+        undo_call=f"trash_items(['{item_key}'])",
+        versions=info,
+    )
     if collection_key:
         from .collections import add_items_to_collection
 
@@ -335,17 +335,16 @@ def link_attachment(
         "link-attachment",
         {"parentItemKey": parent_item_key, "path": path, "title": title or os.path.basename(path)},
     )
-    return {
-        "ok": True,
-        "op": "link_attachment",
-        "transport": "linker",
-        "parent_item_key": parent_item_key,
-        "attachment_key": reply.get("attachmentKey"),
-        "path": path,
-        "linker": reply,
-        "undo_call": f"trash_items(['{reply.get('attachmentKey')}'])",
-        "versions": info,
-    }
+    return ok(
+        'link_attachment',
+        transport='linker',
+        parent_item_key=parent_item_key,
+        attachment_key=reply.get('attachmentKey'),
+        path=path,
+        linker=reply,
+        undo_call=f"trash_items(['{reply.get('attachmentKey')}'])",
+        versions=info,
+    )
 
 
 def import_attachment(
@@ -389,16 +388,15 @@ def import_attachment(
             "or may not have been attached; check the parent item",
             {"parent_item_key": parent_item_key, "path": path, "cookjohn": reply},
         )
-    return {
-        "ok": True,
-        "op": "import_attachment",
-        "transport": "cookjohn",
-        "parent_item_key": parent_item_key,
-        "attachment_key": attachment_key,
-        "path": path,
-        "cookjohn": reply,
-        "versions": info,
-    }
+    return ok(
+        'import_attachment',
+        transport='cookjohn',
+        parent_item_key=parent_item_key,
+        attachment_key=attachment_key,
+        path=path,
+        cookjohn=reply,
+        versions=info,
+    )
 
 
 # --------------------------------------------------------------------------
@@ -472,21 +470,18 @@ def update_metadata(
         journal_dir=journal_dir,
     )
     reply = session.cookjohn.call("write_metadata", {"itemKey": item_key, "fields": fields})
-    result = {
-        "ok": True,
-        "op": "update_metadata",
-        "transport": "cookjohn",
-        "item_key": item_key,
-        "fields_written": fields,
-        "fields_overwritten": overwritten,
-        "fields_added": added,
-        "cookjohn": reply,
-        "undo_manifest": manifest,
-        "undo_call": (
-            f"update_metadata({item_key!r}, {overwritten!r})" if overwritten else None
-        ),
-        "versions": info,
-    }
+    result = ok(
+        'update_metadata',
+        transport='cookjohn',
+        item_key=item_key,
+        fields_written=fields,
+        fields_overwritten=overwritten,
+        fields_added=added,
+        cookjohn=reply,
+        undo_manifest=manifest,
+        undo_call=f'update_metadata({item_key!r}, {overwritten!r})' if overwritten else None,
+        versions=info,
+    )
     result["verification"] = _verify_fields(
         session.store, item_key, fields, states[item_key].item_type
     )
@@ -604,18 +599,17 @@ def replace_creators(
     reply = session.cookjohn.call(
         "write_metadata", {"itemKey": item_key, "creators": list(creators)}
     )
-    return {
-        "ok": True,
-        "op": "replace_creators",
-        "transport": "cookjohn",
-        "item_key": item_key,
-        "creators_before": list(was),
-        "creators_written": list(creators),
-        "cookjohn": reply,
-        "undo_manifest": manifest,
-        "undo_call": f"replace_creators({item_key!r}, {list(was)!r}, force=True)",
-        "versions": info,
-    }
+    return ok(
+        'replace_creators',
+        transport='cookjohn',
+        item_key=item_key,
+        creators_before=list(was),
+        creators_written=list(creators),
+        cookjohn=reply,
+        undo_manifest=manifest,
+        undo_call=f'replace_creators({item_key!r}, {list(was)!r}, force=True)',
+        versions=info,
+    )
 
 
 # --------------------------------------------------------------------------
@@ -721,18 +715,17 @@ def _tag_op(
         "write_tag", {"action": action, "itemKey": item_key, "tags": list(tags)}
     )
     now = session.store.item_tags([item_key])[item_key]
-    return {
-        "ok": True,
-        "op": f"{action}_tags",
-        "transport": "cookjohn",
-        "item_key": item_key,
-        "tags_before": list(was),
-        "tags_after": list(now),
-        "cookjohn": reply,
-        "undo_manifest": manifest,
-        "undo_call": f"set_tags({item_key!r}, {list(was)!r}, force=True)",
-        "versions": info,
-    }
+    return ok(
+        f'{action}_tags',
+        transport='cookjohn',
+        item_key=item_key,
+        tags_before=list(was),
+        tags_after=list(now),
+        cookjohn=reply,
+        undo_manifest=manifest,
+        undo_call=f'set_tags({item_key!r}, {list(was)!r}, force=True)',
+        versions=info,
+    )
 
 
 # --------------------------------------------------------------------------
@@ -830,17 +823,16 @@ def write_note(
         arguments["tags"] = list(tags)
     reply = session.cookjohn.call("write_note", arguments)
     key = note_key or find_key(reply)
-    return {
-        "ok": True,
-        "op": f"write_note:{action}",
-        "transport": "cookjohn",
-        "note_key": key,
-        "parent_item_key": parent_item_key,
-        "cookjohn": reply,
-        "undo_manifest": manifest,
-        "undo_call": f"trash_items(['{key}'])" if action == "create" and key else None,
-        "versions": info,
-    }
+    return ok(
+        f'write_note:{action}',
+        transport='cookjohn',
+        note_key=key,
+        parent_item_key=parent_item_key,
+        cookjohn=reply,
+        undo_manifest=manifest,
+        undo_call=f"trash_items(['{key}'])" if action == 'create' and key else None,
+        versions=info,
+    )
 
 
 # --------------------------------------------------------------------------
@@ -974,13 +966,12 @@ def _trash_op(
     verification = _trash_verdict(disagreed)
     verification["read_mode"] = after.read_mode
 
-    result = {
-        "ok": True,
-        "op": op,
-        "transport": "linker",
-        "item_keys": to_send,
-        "skipped": skipped,
-        "affected": [
+    result = ok(
+        op,
+        transport='linker',
+        item_keys=to_send,
+        skipped=skipped,
+        affected=[
             {
                 "key": k,
                 "title": states[k].title,
@@ -989,12 +980,12 @@ def _trash_op(
             }
             for k in to_send
         ],
-        "linker": reply,
-        "undo_manifest": manifest,
-        "undo_call": f"{inverse}({to_send})",
-        "verification": verification,
-        "versions": info,
-    }
+        linker=reply,
+        verification=verification,
+        undo_manifest=manifest,
+        undo_call=f'{inverse}({to_send})',
+        versions=info,
+    )
     if db_backup:
         result["database_backup"] = db_backup
     return result

@@ -31,9 +31,11 @@ from zotero_core.write import (
     delete_collection,
     import_attachment,
     link_attachment,
+    move_items_between_collections,
     remove_items_from_collection,
     remove_tags,
     replace_creators,
+    restore_items,
     set_tags,
     trash_items,
     update_collection,
@@ -80,14 +82,113 @@ def test_no_verb_leaks_a_port_or_a_plugin_name_into_its_signature(verb):
         assert leak not in names, f"{verb.__name__} exposes {leak!r}"
 
 
-def test_each_verb_reports_which_transport_served_it(zotero, linker, cookjohn):
-    """Hidden from the signature, visible in the result. Debugging a write means
-    knowing which plugin performed it, so the fact is reported rather than erased."""
-    zotero.add("PARENT12", "The Parent", item_type="book")
-    kw = _kw(zotero, linker, cookjohn)
+def test_the_success_envelope_has_one_shape(zotero, linker, cookjohn):
+    """The frame is built in ONE place now (`results.ok`), not spelled out 16 times.
 
-    assert add_tags("PARENT12", ["x"], **kw)["transport"] == "cookjohn"
-    assert trash_items(["PARENT12"], **kw)["transport"] == "linker"
+    Before this, renaming a field or adding one every verb should carry was a 16-place
+    edit with no way to notice a site that was missed. `errors.py` already made the
+    argument for the failure path -- a machine-readable code beats matching substrings of
+    an English sentence -- and a success envelope assembled independently 16 times has
+    the same weakness one level up: the consumer is matching a shape nobody guarantees.
+    """
+    kw = _kw(zotero, linker, cookjohn)
+    zotero.add("PARENT12", "The Parent", item_type="book")
+    for result in (
+        create_item("book", {"title": "New"}, **kw),
+        add_tags("PARENT12", ["x"], **kw),
+        trash_items(["PARENT12"], **kw),
+    ):
+        assert result["ok"] is True
+        assert isinstance(result["op"], str) and result["op"]
+        assert result["transport"] in {"cookjohn", "linker", "both", "none"}
+
+
+def test_an_explicit_null_undo_call_survives_the_builder(zotero, linker, cookjohn):
+    """OMITTED and EXPLICITLY NULL mean different things and both occur.
+
+    `update_metadata` sets `undo_call` to None on purpose when nothing was overwritten --
+    cookjohn has no field-remove, so no inverse is expressible. An envelope builder that
+    dropped null keys would have turned "there is no undo for this call" into "this verb
+    does not journal at all", silently, under cover of a refactor.
+    """
+    zotero.add("PARENT12", "The Parent", item_type="book")
+    out = update_metadata("PARENT12", {"volume": "9"}, **_kw(zotero, linker, cookjohn))
+    assert "undo_call" in out
+    assert out["undo_call"] is None
+
+
+def test_the_builder_refuses_an_unknown_transport():
+    from zotero_core.write.results import ok
+
+    with pytest.raises(ValueError, match="unknown transport"):
+        ok("x", transport="cookjhon")
+
+
+def test_each_verb_reports_which_transport_served_it(zotero, linker, cookjohn, tmp_path):
+    """EVERY verb, not a spot-check, and asserted against the TABLE.
+
+    The transport used to be hardcoded three times per verb, independently and unlinked:
+    what `require_zotero(needs=...)` demands, what `session.<name>.call/post` actually
+    invokes, and the literal string in the result. Nothing checked that the three agreed,
+    so a verb could demand one plugin, use another, and report a third -- and the only
+    coverage was two verbs asserted by hand here.
+
+    `_ToolSpec.transport` now declares it, and this walks the whole table.
+    """
+    from zotero_core.interfaces.write_mcp import TOOLS
+
+    declared = {spec.name: spec.transport for spec in TOOLS}
+    kw = _kw(zotero, linker, cookjohn)
+    seen: dict[str, str] = {}
+
+    pdf = tmp_path / "f.pdf"
+    pdf.write_bytes(b"%PDF-1.4\n")
+    zotero.add("PARENT12", "The Parent", item_type="book", tags=["keepme"])
+    zotero.add("SECOND12", "The Second", item_type="book")
+    src = zotero.add_collection("Src")
+    dst = zotero.add_collection("Dst")
+    zotero.add_to_collection("PARENT12", src)
+
+    def record(tool: str, result: dict) -> None:
+        seen[tool] = result["transport"]
+
+    record("zotero_create_item", create_item("book", {"title": "New"}, **kw))
+    record("zotero_link_attachment", link_attachment("PARENT12", str(pdf), **kw))
+    record("zotero_import_attachment", import_attachment("PARENT12", str(pdf), **kw))
+    record("zotero_write_note", write_note("<p>n</p>", parent_item_key="PARENT12", **kw))
+    record("zotero_create_collection", create_collection("Fresh", **kw))
+    record("zotero_update_metadata", update_metadata("PARENT12", {"volume": "1"}, **kw))
+    record("zotero_add_tags", add_tags("PARENT12", ["x"], **kw))
+    record("zotero_remove_tags", remove_tags("PARENT12", ["x"], **kw))
+    record("zotero_set_tags", set_tags("PARENT12", ["only"], force=True, **kw))
+    record(
+        "zotero_replace_creators",
+        replace_creators(
+            "PARENT12", [{"creatorType": "author", "lastName": "Z"}], force=True, **kw
+        ),
+    )
+    record("zotero_update_collection", update_collection(dst, name="Dst2", **kw))
+    record("zotero_add_items_to_collection", add_items_to_collection(dst, ["SECOND12"], **kw))
+    record(
+        "zotero_remove_items_from_collection",
+        remove_items_from_collection(dst, ["SECOND12"], **kw),
+    )
+    record(
+        "zotero_move_items_between_collections",
+        move_items_between_collections(src, dst, ["PARENT12"], **kw),
+    )
+    record("zotero_trash_items", trash_items(["SECOND12"], **kw))
+    record("zotero_restore_items", restore_items(["SECOND12"], **kw))
+    record("zotero_delete_collection", delete_collection(dst, **kw))
+
+    mismatched = {
+        name: (declared[name], got) for name, got in seen.items() if declared[name] != got
+    }
+    assert not mismatched, f"declared != reported: {mismatched}"
+
+    # and every plugin-backed tool in the table was actually exercised
+    plugin_backed = {n for n, t in declared.items() if t in {"cookjohn", "linker"}}
+    assert plugin_backed - set(seen) == set(), f"never exercised: {plugin_backed - set(seen)}"
 
 
 # --------------------------------------------------------------------------

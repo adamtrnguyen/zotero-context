@@ -150,6 +150,14 @@ class _ToolSpec:
     description: str
     properties: dict[str, dict] = field(default_factory=dict)
     required: tuple[str, ...] = ()
+    # Which plugin performs this verb. DECLARED here because it was previously
+    # hardcoded three times per verb, independently and unlinked: what
+    # `require_zotero(needs=...)` demands, what `session.<name>.call/post` actually
+    # invokes, and the literal `"transport": "..."` string in the result. Nothing
+    # asserted the three agreed, so a verb could demand one plugin, use another, and
+    # report a third. "both" is preflight, which probes each separately on purpose;
+    # "none" is a verb that touches no plugin.
+    transport: str = "cookjohn"
 
     def as_tool_schema(self) -> dict:
         return {
@@ -282,6 +290,7 @@ TOOLS: tuple[_ToolSpec, ...] = (
     _ToolSpec(
         name="zotero_link_attachment",
         verb=link_attachment,
+        transport="linker",
         description=(
             "Attach a file BY REFERENCE — no copy into ~/Zotero/storage. The path must "
             "be ABSOLUTE and the file must exist: Zotero resolves a relative path "
@@ -505,6 +514,7 @@ TOOLS: tuple[_ToolSpec, ...] = (
     _ToolSpec(
         name="zotero_trash_items",
         verb=trash_items,
+        transport="linker",
         description=(
             "Move items to the Zotero trash. RECOVERABLE — see zotero_restore_items; "
             "nothing here erases anything. Works on any item key including "
@@ -518,6 +528,7 @@ TOOLS: tuple[_ToolSpec, ...] = (
     _ToolSpec(
         name="zotero_restore_items",
         verb=restore_items,
+        transport="linker",
         description=(
             "Bring items back out of the trash — the inverse of zotero_trash_items. "
             "force=True skips keys that are not trashed instead of refusing the batch."
@@ -551,6 +562,7 @@ TOOLS: tuple[_ToolSpec, ...] = (
     _ToolSpec(
         name="zotero_list_undo",
         verb=list_undo,
+        transport="none",
         description=(
             "The write journal, newest first. Ten verbs record the call that reverses "
             "them; until now NOTHING read those manifests, so `undo_call` was advisory "
@@ -564,6 +576,7 @@ TOOLS: tuple[_ToolSpec, ...] = (
     _ToolSpec(
         name="zotero_undo",
         verb=undo_write,
+        transport="none",
         description=(
             "Replay a journal manifest's inverse. Defaults to the most recent REPLAYABLE "
             "entry. Use dry_run=true first: it resolves and validates the call and shows "
@@ -582,6 +595,7 @@ TOOLS: tuple[_ToolSpec, ...] = (
     _ToolSpec(
         name="zotero_write_preflight",
         verb=preflight,
+        transport="both",
         description=(
             "Check whether writes are possible right now, and optionally resolve item "
             "keys, WITHOUT writing anything. Reports each plugin separately: Zotero "

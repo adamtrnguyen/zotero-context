@@ -27,6 +27,7 @@ from ..read.items import ZoteroItemStore
 from .errors import Reason, WriteBlocked
 from .journal import write_manifest
 from .liveness import require_zotero
+from .results import ok
 from .transports.cookjohn import CookjohnClient, find_key
 from .transports.linker import LinkerClient
 
@@ -148,17 +149,16 @@ def create_collection(
             "create_collection returned no collection key — nothing verifiable was created",
             {"reply": reply},
         )
-    return {
-        "ok": True,
-        "op": "create_collection",
-        "transport": "cookjohn",
-        "collection_key": key,
-        "name": name,
-        "parent_collection": parent_collection,
-        "cookjohn": reply,
-        "undo_call": f"delete_collection({key!r})",
-        "versions": info,
-    }
+    return ok(
+        'create_collection',
+        transport='cookjohn',
+        collection_key=key,
+        name=name,
+        parent_collection=parent_collection,
+        cookjohn=reply,
+        undo_call=f'delete_collection({key!r})',
+        versions=info,
+    )
 
 
 def _same_name_siblings(reply, name: str, parent_collection: str | None) -> list[dict]:
@@ -234,18 +234,17 @@ def update_collection(
     if parent_collection is not None:
         arguments["parentCollection"] = parent_collection
     reply = cookjohn.call("update_collection", arguments)
-    return {
-        "ok": True,
-        "op": "update_collection",
-        "transport": "cookjohn",
-        "collection_key": collection_key,
-        "before": {"name": before.get("name") or before.get("collectionName")},
-        "name": name,
-        "parent_collection": parent_collection,
-        "cookjohn": reply,
-        "undo_manifest": manifest,
-        "versions": info,
-    }
+    return ok(
+        'update_collection',
+        transport='cookjohn',
+        collection_key=collection_key,
+        before={'name': before.get('name') or before.get('collectionName')},
+        name=name,
+        parent_collection=parent_collection,
+        cookjohn=reply,
+        undo_manifest=manifest,
+        versions=info,
+    )
 
 
 def delete_collection(
@@ -310,18 +309,17 @@ def delete_collection(
     if delete_items:
         arguments["deleteItems"] = True
     reply = cookjohn.call("delete_collection", arguments)
-    return {
-        "ok": True,
-        "op": "delete_collection",
-        "transport": "cookjohn",
-        "collection_key": collection_key,
-        "name": name,
-        "members_at_deletion": members,
-        "items_trashed": bool(delete_items),
-        "cookjohn": reply,
-        "undo_manifest": manifest,
-        "versions": info,
-    }
+    return ok(
+        'delete_collection',
+        transport='cookjohn',
+        collection_key=collection_key,
+        name=name,
+        members_at_deletion=members,
+        items_trashed=bool(delete_items),
+        cookjohn=reply,
+        undo_manifest=manifest,
+        versions=info,
+    )
 
 
 def add_items_to_collection(
@@ -344,16 +342,15 @@ def add_items_to_collection(
     reply = cookjohn.call(
         "add_items_to_collection", {"collectionKey": collection_key, "itemKeys": keys}
     )
-    return {
-        "ok": True,
-        "op": "add_items_to_collection",
-        "transport": "cookjohn",
-        "collection_key": collection_key,
-        "item_keys": keys,
-        "cookjohn": reply,
-        "undo_call": f"remove_items_from_collection({collection_key!r}, {keys!r})",
-        "versions": info,
-    }
+    return ok(
+        'add_items_to_collection',
+        transport='cookjohn',
+        collection_key=collection_key,
+        item_keys=keys,
+        cookjohn=reply,
+        undo_call=f'remove_items_from_collection({collection_key!r}, {keys!r})',
+        versions=info,
+    )
 
 
 def remove_items_from_collection(
@@ -389,17 +386,16 @@ def remove_items_from_collection(
     reply = cookjohn.call(
         "remove_items_from_collection", {"collectionKey": collection_key, "itemKeys": keys}
     )
-    return {
-        "ok": True,
-        "op": "remove_items_from_collection",
-        "transport": "cookjohn",
-        "collection_key": collection_key,
-        "item_keys": keys,
-        "cookjohn": reply,
-        "undo_manifest": manifest,
-        "undo_call": f"add_items_to_collection({collection_key!r}, {keys!r})",
-        "versions": info,
-    }
+    return ok(
+        'remove_items_from_collection',
+        transport='cookjohn',
+        collection_key=collection_key,
+        item_keys=keys,
+        cookjohn=reply,
+        undo_manifest=manifest,
+        undo_call=f'add_items_to_collection({collection_key!r}, {keys!r})',
+        versions=info,
+    )
 
 
 def move_items_between_collections(
@@ -529,24 +525,23 @@ def move_items_between_collections(
     missing_from_target = sorted(set(keys) - after_target)
     verified = not still_in_source and not missing_from_target
 
-    return {
-        "ok": True,
-        "op": "move_items_between_collections",
-        "transport": "cookjohn",
-        "from_collection_key": from_collection_key,
-        "to_collection_key": to_collection_key,
-        "item_keys": keys,
-        "not_in_source": absent,
-        "cookjohn": {"added": added, "removed": removed},
-        "undo_manifest": manifest,
-        "undo_call": (
-            f"move_items_between_collections({to_collection_key!r}, "
-            f"{from_collection_key!r}, {keys!r})"
-        ),
-        "verification": {
+    return ok(
+        'move_items_between_collections',
+        transport='cookjohn',
+        from_collection_key=from_collection_key,
+        to_collection_key=to_collection_key,
+        item_keys=keys,
+        not_in_source=absent,
+        cookjohn={'added': added, 'removed': removed},
+        verification={
             "verified": verified,
             "still_in_source": still_in_source,
             "missing_from_target": missing_from_target,
         },
-        "versions": info,
-    }
+        undo_manifest=manifest,
+        undo_call=(
+            f"move_items_between_collections({to_collection_key!r}, "
+            f"{from_collection_key!r}, {keys!r})"
+        ),
+        versions=info,
+    )

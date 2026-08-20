@@ -60,6 +60,7 @@ from typing import Any
 
 from .errors import Reason, WriteBlocked
 from .journal import DEFAULT_JOURNAL_DIR
+from .results import ok
 
 PLACEHOLDER_MARKERS = ("<", ">")
 
@@ -240,9 +241,18 @@ def undo(
         "verb": verb_name,
     }
     if dry_run:
-        return {"ok": True, "op": "undo:dry_run", "would_call": plan}
+        return ok(
+            'undo:dry_run',
+            transport='none',
+            would_call=plan,
+        )
 
     # The injected transports/store are for tests; a real caller passes nothing and the
     # verb builds its own session, exactly as a direct call would.
     result = verb(*args, **{**kwargs, **injected})
-    return {"ok": True, "op": "undo", "undone": plan, "result": result}
+    return ok(
+        'undo',
+        transport='none',
+        undone=plan,
+        result=result,
+    )

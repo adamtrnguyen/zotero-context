@@ -52,6 +52,10 @@ layers =
 #   liveness           imports both transports and `.errors`. It is the only module
 #                      that knows about both, because distinguishing "Zotero is down"
 #                      from "one plugin is missing" needs both probes.
+#   results            the success-envelope builder. Independent of errors and journal:
+#                      it imports nothing from the package, which is what lets the
+#                      failure path, the audit path and the success path sit side by
+#                      side rather than one depending on another.
 #   verbs, collections NON-INDEPENDENT siblings (`:` not `|`): they import each other
 #                      through deferred function-level imports -- `verbs.create_item`
 #                      calls `collections.add_items_to_collection` to file a new item,
@@ -59,16 +63,22 @@ layers =
 #                      `verbs.check_keys`/`require_items`. That cycle is real and
 #                      declaring it is more honest than splitting the layer to hide it.
 #
+#   replay             reads the journal and replays an inverse, so it sits ABOVE the
+#                      verbs it calls. Its imports of `verbs`/`collections` are deferred
+#                      into a function, which is what keeps the whitelist from making
+#                      this module a hard dependency of every verb.
+#
 # The adapter is no longer the top of this spine -- it moved to `interfaces`, where
 # contract 1 already places it above everything here.
 [importlinter:contract:write-spine]
 name = write layers: verbs above liveness above transports above errors
 type = layers
 layers =
+    zotero_core.write.replay
     zotero_core.write.verbs : zotero_core.write.collections
     zotero_core.write.liveness
     zotero_core.write.transports.linker | zotero_core.write.transports.cookjohn
-    zotero_core.write.errors | zotero_core.write.journal
+    zotero_core.write.errors | zotero_core.write.journal | zotero_core.write.results
 
 # --------------------------------------------------------------------------
 # 3. no SQL in the write path
