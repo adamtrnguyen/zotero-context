@@ -20,7 +20,15 @@ class ZoteroBridgeClient:
         self.timeout = timeout
 
     def ping(self) -> dict:
-        ping_url = self.url.replace("/window-state", "/ping")
+        # ⚠ WAS `self.url.replace("/window-state", "/ping")` while `DEFAULT_PING_URL`
+        # sat three lines above, defined and never read — the constant was dead AND its
+        # value hand-derived. String surgery on a caller-supplied URL also silently
+        # produces the wrong endpoint for any `url` not containing "/window-state".
+        ping_url = (
+            DEFAULT_PING_URL
+            if self.url == DEFAULT_BRIDGE_URL
+            else self.url.replace("/window-state", "/ping")
+        )
         try:
             with urllib.request.urlopen(ping_url, timeout=self.timeout) as response:
                 return json.load(response)

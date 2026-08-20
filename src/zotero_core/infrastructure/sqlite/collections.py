@@ -187,16 +187,26 @@ class ZoteroCollectionStore:
             truncated=seen_depth >= MAX_DEPTH,
         )
 
-    def find(self, name: str) -> tuple[CollectionNode, ...]:
-        """Collections whose name contains `name`, case-insensitively.
+    def find(self, name: str) -> tuple[tuple[CollectionNode, ...], str]:
+        """Collections whose name contains `name`, case-insensitively, AND the read mode.
 
         Substring, not fuzzy -- the fuzzy matcher belongs with the rest of search and is
         not worth a second implementation here.
+
+        ⚠ RETURNS THE READ MODE, which it used to throw away. It walks `self.tree()`, which
+        already carries one, so the information was in hand and dropped: `find_collections`
+        was the only collection read whose envelope had no `read_mode`, while
+        `collection_tree` returned one under the SAME `collections` key. A caller could not
+        tell whether a `find` had been served live or from an `immutable=1` snapshot -- and
+        under a snapshot, "no collection by that name" and "not visible yet" are the same
+        answer. The `(rows, read_mode)` shape matches what `search`'s methods already return.
         """
+        tree = self.tree()
         needle = name.strip().casefold()
         if not needle:
-            return ()
-        return tuple(node for node in self.tree().flat() if needle in node.name.casefold())
+            return (), tree.read_mode
+        found = tuple(node for node in tree.flat() if needle in node.name.casefold())
+        return found, tree.read_mode
 
     def items(self, collection_key: str, *, include_trashed: bool = False) -> CollectionMembers:
         """What is IN a collection. Direct members only -- subcollections are separate.

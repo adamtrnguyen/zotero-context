@@ -28,6 +28,17 @@ from pathlib import Path
 
 from zotero_core.application.services.context import ZoteroContext
 from zotero_core.application.services.session import WriteSession
+from zotero_core.domain.ports.annotation_catalogue import AnnotationCatalogue
+from zotero_core.domain.ports.catalogue import Catalogue
+from zotero_core.domain.ports.citation_keys import CitationKeys
+from zotero_core.domain.ports.collection_catalogue import CollectionCatalogue
+from zotero_core.domain.ports.duplicates import DuplicateFinder
+from zotero_core.domain.ports.gui_bridge import GuiBridge
+from zotero_core.domain.ports.journal import Journal
+from zotero_core.domain.ports.library_catalogue import LibraryCatalogue
+from zotero_core.domain.ports.search_catalogue import SearchCatalogue
+from zotero_core.domain.ports.write_transport import Cookjohn, Linker
+from zotero_core.domain.ports.zotero_probe import ZoteroProbe
 from zotero_core.infrastructure.http.bbt import DEFAULT_BBT_RPC_URL, BetterBibTeXClient
 from zotero_core.infrastructure.http.bridge import DEFAULT_BRIDGE_URL, ZoteroBridgeClient
 from zotero_core.infrastructure.journal import FileJournal
@@ -47,13 +58,13 @@ from zotero_core.infrastructure.transports.linker import LinkerClient
 
 def build_write_session(
     *,
-    linker=None,
-    cookjohn=None,
-    store=None,
-    collections=None,
-    journal=None,
-    probe=None,
-    duplicates=None,
+    linker: Linker | None = None,
+    cookjohn: Cookjohn | None = None,
+    store: Catalogue | None = None,
+    collections: CollectionCatalogue | None = None,
+    journal: Journal | None = None,
+    probe: ZoteroProbe | None = None,
+    duplicates: DuplicateFinder | None = None,
 ) -> WriteSession:
     """Assemble one write session, defaulting each port to its real adapter.
 
@@ -89,32 +100,59 @@ def build_context(
     bridge_url: str = DEFAULT_BRIDGE_URL,
     zotero_db_path: str | Path = DEFAULT_ZOTERO_DB,
     bbt_rpc_url: str = DEFAULT_BBT_RPC_URL,
-    **overrides,
+    bridge: GuiBridge | None = None,
+    annotations: AnnotationCatalogue | None = None,
+    bbt: CitationKeys | None = None,
+    items: Catalogue | None = None,
+    collections: CollectionCatalogue | None = None,
+    search: SearchCatalogue | None = None,
+    libraries: LibraryCatalogue | None = None,
+    duplicates: DuplicateFinder | None = None,
 ) -> ZoteroContext:
     """Assemble the read facade, defaulting every port to its real adapter.
 
-    The three keyword arguments are the ones a CALLER actually varies -- point it at a copy
-    of the database, or at a bridge on another port -- and they are kept because the CLI's
-    `--db` and the MCP adapter's `ZOTERO_CORE_DB` both mean exactly this. `overrides` takes
-    a ready-made port by name, which is how a test substitutes one.
+    The three URL/path arguments are what a CALLER actually varies -- point it at a copy of
+    the database, or a bridge on another port -- and they are kept because the CLI's `--db`
+    and the MCP adapter's `ZOTERO_CORE_DB` both mean exactly this. The eight port arguments
+    are overrides, for a test or a caller that already holds one.
 
-    ⚠ Was a one-line passthrough while `ZoteroContext` built its own stores. That is the
-    defect this replaces: seven concrete adapters constructed inside an application-layer
-    facade, none of them replaceable.
+    ⚠ TWO DEFECTS FIXED HERE, both found by an audit rather than by a test.
+
+    1. This took `**overrides` and `.pop`ed names out of it, so a MISSPELLED port was
+       silently ignored: `build_context(bbt_client=Fake())` returned a real
+       `BetterBibTeXClient` and reported nothing. That is the same silent-no-op this
+       module's own docstring indicts monkeypatching for -- "a renamed module would
+       silently stop being patched" -- reintroduced as a typo'd keyword. Named parameters
+       make it a `TypeError`.
+    2. It used `x or Concrete()`, which discards a FALSY override. Measured: a stub whose
+       `__bool__` returns False was thrown away and the real store used instead.
+       `is not None` is the test that means "was one supplied", which is the question.
+       `build_write_session` already did this correctly; the two now agree.
+
+    Annotating each parameter with its PORT is what lets `ty` check the wiring at all. With
+    the old `**overrides` every argument was laundered through `Unknown` before it reached
+    the typed dataclass, so passing a non-port produced zero diagnostics here while
+    constructing `ZoteroContext` directly produced eight.
 
     Every store reads the SAME database. Handing them different paths would let a duplicate
-    check answer about one library while the existence gate read another.
+    check answer about one library while the existence gate read another -- which is also
+    why `duplicates` defaults to a finder over the item store built here, not a second one.
     """
     db = zotero_db_path
-    items = overrides.pop("items", None) or ZoteroItemStore(db)
-    collections = overrides.pop("collections", None) or ZoteroCollectionStore(db)
+    items = items if items is not None else ZoteroItemStore(db)
     return ZoteroContext(
-        bridge=overrides.pop("bridge", None) or ZoteroBridgeClient(bridge_url),
-        annotations=overrides.pop("annotations", None) or ZoteroAnnotationStore(db),
-        bbt=overrides.pop("bbt", None) or BetterBibTeXClient(bbt_rpc_url),
+        bridge=bridge if bridge is not None else ZoteroBridgeClient(bridge_url),
+        annotations=(
+            annotations if annotations is not None else ZoteroAnnotationStore(db)
+        ),
+        bbt=bbt if bbt is not None else BetterBibTeXClient(bbt_rpc_url),
         items=items,
-        collections=collections,
-        search=overrides.pop("search", None) or ZoteroSearchStore(db),
-        libraries=overrides.pop("libraries", None) or SqliteLibraryCatalogue(db),
-        duplicates=overrides.pop("duplicates", None) or CatalogueDuplicateFinder(items),
+        collections=(
+            collections if collections is not None else ZoteroCollectionStore(db)
+        ),
+        search=search if search is not None else ZoteroSearchStore(db),
+        libraries=libraries if libraries is not None else SqliteLibraryCatalogue(db),
+        duplicates=(
+            duplicates if duplicates is not None else CatalogueDuplicateFinder(items)
+        ),
     )

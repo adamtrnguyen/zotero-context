@@ -102,8 +102,6 @@ class ZoteroContext:
     def get_window_state(self) -> WindowState:
         return self.bridge.get_window_state()
 
-    def get_selected_items(self):
-        return self.get_window_state().selected_items
 
     def get_open_readers(self) -> list[ReaderState]:
         return self.get_window_state().readers
@@ -271,9 +269,10 @@ class ZoteroContext:
         return {"items": self._collections_for(library_id).collections_of(item_keys)}
 
     def find_collections(self, name: str, *, library_id: int | None = None) -> dict:
-        found = self._collections_for(library_id).find(name)
+        found, read_mode = self._collections_for(library_id).find(name)
         return {
             "count": len(found),
+            "read_mode": read_mode,
             "collections": [
                 {"key": n.key, "name": n.name, "path": n.path, "item_count": n.item_count}
                 for n in found

@@ -82,11 +82,15 @@ __version__ = "0.3.0"
 # this package deviates on purpose because `__all__` IS its published API.
 _LAZY_WRITE_VERBS = ("import_attachment", "update_metadata", "write_note")
 
-#: The composition root. Published because the verbs above now REQUIRE a `WriteSession`,
-#: so a consumer needs a way to build one -- `youtube2zotero` calls this once per run.
+#: The composition root, BOTH halves. Published because the verbs require a `WriteSession`
+#: and `ZoteroContext` now requires eight ports, so a consumer cannot build either itself.
+#: ⚠ `build_context` was NOT published at first, and that omission BROKE `arxiv-bulk`:
+#: `ZoteroContext(zotero_db_path=...)` had been the documented way in, the read-side port
+#: replaced that constructor, and the replacement was not on the public surface. Publishing
+#: `ZoteroContext` as a NAME is not the same as publishing a way to construct one.
 #: Lazy for the same reason as the verbs: it imports `interfaces`, which sits above
 #: everything, and an eager import here would put that in every layer's import graph.
-_LAZY_FACTORY = ("build_write_session",)
+_LAZY_FACTORY = ("build_write_session", "build_context")
 
 
 def __getattr__(name: str):
@@ -148,4 +152,5 @@ __all__ = [
     "update_metadata",
     "write_note",
     "build_write_session",
+    "build_context",
 ]

@@ -53,6 +53,7 @@ PUBLISHED = (
     "write_note",
     # The composition root, published because the verbs now REQUIRE a session.
     "build_write_session",
+    "build_context",
 )
 
 
@@ -78,8 +79,23 @@ def test_the_public_surface_is_enough_for_the_known_consumers():
     layout -- it was to put what it needed on the public surface, so the layout is free to
     change. These four names are what it uses.
     """
-    for name in ("ZoteroContext", "Annotation", "DEFAULT_ZOTERO_DB", "DEFAULT_BBT_RPC_URL"):
+    for name in (
+        "ZoteroContext",
+        "Annotation",
+        "DEFAULT_ZOTERO_DB",
+        "DEFAULT_BBT_RPC_URL",
+        # ⚠ `build_context` was missing here and `arxiv-bulk` BROKE. It constructed the
+        # facade directly -- `ZoteroContext(zotero_db_path=...)` -- which worked until the
+        # read-side port replaced that constructor with eight required ports. The name
+        # `ZoteroContext` never left the surface, so a name-resolution test saw nothing
+        # wrong. A type you cannot construct is not a usable export.
+        "build_context",
+    ):
         assert hasattr(zotero_core, name), f"{name} left the public surface"
+
+    # And the surface must be enough to CONSTRUCT it, not merely to name it.
+    ctx = zotero_core.build_context()
+    assert isinstance(ctx, zotero_core.ZoteroContext)
 
 
 def test_the_public_surface_is_enough_to_write():
@@ -94,6 +110,7 @@ def test_the_public_surface_is_enough_to_write():
     """
     for name in (
         "build_write_session",
+    "build_context",
         "CookjohnClient",
         "import_attachment",
         "update_metadata",

@@ -252,12 +252,16 @@ def test_find_matches_case_insensitively_and_returns_the_path(zotero, store):
     top = zotero.add_collection("Embodied AI")
     zotero.add_collection("Robotics", parent=top)
 
-    found = store.find("robot")
+    found, read_mode = store.find("robot")
     assert len(found) == 1
     assert found[0].name == "Robotics"
+    # `find` reports the read mode it walks the tree under. It used to discard it, which
+    # made `find_collections` the one collection read whose envelope could not say whether
+    # a miss meant "no such collection" or "a snapshot that predates it".
+    assert read_mode in {"mode=ro", "immutable=1"}
     assert found[0].path == "Embodied AI > Robotics"
 
 
 def test_find_with_a_blank_needle_returns_nothing_rather_than_everything(zotero, store):
     zotero.add_collection("Anything")
-    assert store.find("   ") == ()
+    assert store.find("   ")[0] == ()
