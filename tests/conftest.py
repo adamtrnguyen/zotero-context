@@ -787,3 +787,17 @@ def session(zotero, linker, cookjohn, tmp_path):
         journal=FileJournal(str(tmp_path / "journal")),
         probe=StubProbe(running=True),
     )
+
+
+@pytest.fixture()
+def ctx(zotero):
+    """A read facade aimed at the throwaway database, assembled by the real factory.
+
+    ⚠ REPLACES `monkeypatch.setattr(read_mcp, "_CTX", ctx)`. The adapter kept its context in
+    a module global built lazily on first use, so pointing it anywhere meant rewriting that
+    global -- five sites did. `call_read` takes `ctx=` now, so the substitution is an
+    argument and a wrong one is a TypeError rather than a silent no-op.
+    """
+    from zotero_core.interfaces.factory import build_context
+
+    return build_context(zotero_db_path=zotero.path)

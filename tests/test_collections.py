@@ -265,3 +265,23 @@ def test_find_matches_case_insensitively_and_returns_the_path(zotero, store):
 def test_find_with_a_blank_needle_returns_nothing_rather_than_everything(zotero, store):
     zotero.add_collection("Anything")
     assert store.find("   ")[0] == ()
+
+
+def test_the_collection_tree_counts_every_collection_not_just_the_roots(zotero, ctx):
+    """⚠ THE ONE READ THAT IS NOT A ROW SET, and converting it to `results.rows()` broke it.
+
+    `rows()` derives `count` from the payload it is handed, deliberately — a count that does
+    not describe the rows beside it is how the two drift. Here the payload is a nested TREE:
+    the list holds top-level roots while the count means every collection, subcollections
+    included. The conversion silently turned 84 into 16 on the live library, and only a
+    before/after capture of every envelope caught it.
+
+    This pins the distinction: nest a collection, and the count must exceed the root count.
+    """
+    top = zotero.add_collection("Top")
+    zotero.add_collection("Nested", parent=top)
+    zotero.add_collection("Deeper", parent=zotero.add_collection("Second"))
+
+    out = ctx.collection_tree()
+    assert len(out["collections"]) == 2, "two roots"
+    assert out["count"] == 4, "count is every collection, not the roots"

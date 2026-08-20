@@ -67,3 +67,34 @@ def ok(
     if versions is not None:
         envelope["versions"] = versions
     return envelope
+
+
+def rows(key: str, items: Any, *, read_mode: Any, **extra: Any) -> dict:
+    """The success envelope every READ returns. The counterpart to `ok()` above.
+
+    WHY THIS EXISTS, WHICH IS THE SAME REASON `ok()` DOES
+    -----------------------------------------------------
+    `ok()` was written because the write frame had been spelled out by hand at 15 sites. The
+    read side had no equivalent and had accumulated the same defect: `count` and `read_mode`
+    were assembled by hand at ELEVEN returns in `context.py`, each with a different payload
+    key -- `libraries`, `attachments`, `collections`, `items`, `hits`, `annotations`,
+    `documents`, `sources`. Adding a field every read should carry was an eleven-place edit
+    with no way to notice a site that was missed, and two sites HAD been missed:
+    `get_zotero_trash_count` returned `{"trashed": N}` and `get_zotero_sources` returned a
+    bare list that could not carry a `read_mode` at all.
+
+    `count` is derived from the payload rather than passed, because the one thing a caller
+    must be able to trust is that `count` describes the rows it was handed. Passing it
+    separately is how those two drift.
+
+    `read_mode` is REQUIRED, not defaulted. Every read is served either live or from an
+    `immutable=1` snapshot, and "which" is the difference between "there is no such thing"
+    and "there is no such thing YET" -- a default would let a new read quietly omit it,
+    which is exactly how the two outliers happened.
+
+    `extra` is the read's own fields, passed through unschematised for the same reason `ok`'s
+    payload is: `query` and `fuzzy` mean nothing to a collection listing, and flattening them
+    into one shape would lose the part a caller reads.
+    """
+    payload = list(items)
+    return {"count": len(payload), "read_mode": read_mode, key: payload, **extra}

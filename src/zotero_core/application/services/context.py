@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from zotero_core.application.results import rows
 from zotero_core.domain.entities.gui import ReaderContext, ReaderState, WindowState
 from zotero_core.domain.entities.models import Annotation, ZoteroSource
 from zotero_core.domain.ports.annotation_catalogue import AnnotationCatalogue
@@ -80,21 +81,21 @@ class ZoteroContext:
         "you have nothing" from "you are looking in the wrong library".
         """
         libraries, read_mode = self.libraries.list_libraries()
-        return {
-            "count": len(libraries),
-            "read_mode": read_mode,
-            "libraries": [
+        return rows(
+            "libraries",
+            [
                 {
-                    "library_id": lib.library_id,
-                    "type": lib.library_type,
-                    "name": lib.name,
-                    "editable": lib.editable,
-                    "item_count": lib.item_count,
-                    "collection_count": lib.collection_count,
+                    'library_id': lib.library_id,
+                    'type': lib.library_type,
+                    'name': lib.name,
+                    'editable': lib.editable,
+                    'item_count': lib.item_count,
+                    'collection_count': lib.collection_count,
                 }
                 for lib in libraries
             ],
-        }
+            read_mode=read_mode,
+        )
 
     def ping(self) -> dict:
         return self.bridge.ping()
@@ -241,19 +242,19 @@ class ZoteroContext:
     def list_pdfs(self, *, limit: int | None = None) -> dict:
         """Enumerate stored PDF attachments with parent title and collection."""
         attachments = self.items.pdf_attachments(limit=limit)
-        return {
-            "count": len(attachments),
-            "read_mode": attachments.read_mode,
-            "attachments": [
+        return rows(
+            "attachments",
+            [
                 {
-                    "attachment_key": att.attachment_key,
-                    "path": str(att.path),
-                    "title": att.title,
-                    "collection": att.collection,
+                    'attachment_key': att.attachment_key,
+                    'path': str(att.path),
+                    'title': att.title,
+                    'collection': att.collection,
                 }
                 for att in attachments
             ],
-        }
+            read_mode=attachments.read_mode,
+        )
 
     def trash_count(self) -> dict:
         """How many items are in the trash, in the same envelope as every other read.
@@ -274,23 +275,32 @@ class ZoteroContext:
         collection.
         """
         items, read_mode = self.items.trashed_items()
-        return {
-            "count": len(items),
-            "read_mode": read_mode,
-            "items": [
+        return rows(
+            "items",
+            [
                 {
-                    "key": item.key,
-                    "title": item.title,
-                    "item_type": item.item_type,
-                    "date_deleted": item.date_deleted,
+                    'key': item.key,
+                    'title': item.title,
+                    'item_type': item.item_type,
+                    'date_deleted': item.date_deleted,
                 }
                 for item in items
             ],
-        }
+            read_mode=read_mode,
+        )
 
     def collection_tree(self, *, library_id: int | None = None) -> dict:
         """The whole collection tree, nested, with breadcrumb paths and item counts."""
         tree = self._collections_for(library_id).tree()
+        # ⚠ NOT `rows()`, and this is the exception that proves its rule. `rows` derives
+        # `count` from the payload it is handed, because a `count` that does not describe
+        # the rows beside it is how the two drift. Here the payload is a nested TREE: the
+        # list is the 16 top-level roots while the count is all 84 collections
+        # (`tree.flat()`). Converting this site silently changed 84 to 16 — caught only
+        # because every envelope was captured before the refactor and compared after.
+        #
+        # `truncated` is tree-specific too. A tree is not a row set, so it keeps its own
+        # frame rather than being bent into one.
         return {
             "count": len(tree.flat()),
             "read_mode": tree.read_mode,
@@ -306,20 +316,20 @@ class ZoteroContext:
         members = self._collections_for(library_id).items(
             collection_key, include_trashed=include_trashed
         )
-        return {
-            "collection_key": collection_key,
-            "count": len(members),
-            "read_mode": members.read_mode,
-            "items": [
+        return rows(
+            "items",
+            [
                 {
-                    "item_key": m.item_key,
-                    "title": m.title,
-                    "item_type": m.item_type,
-                    "trashed": m.trashed,
+                    'item_key': m.item_key,
+                    'title': m.title,
+                    'item_type': m.item_type,
+                    'trashed': m.trashed,
                 }
                 for m in members.members
             ],
-        }
+            read_mode=members.read_mode,
+            collection_key=collection_key,
+        )
 
     def item_collections(self, item_keys: list[str], *, library_id: int | None = None) -> dict:
         """Which collections each item is filed in. The inverse; new capability."""
@@ -327,14 +337,19 @@ class ZoteroContext:
 
     def find_collections(self, name: str, *, library_id: int | None = None) -> dict:
         found, read_mode = self._collections_for(library_id).find(name)
-        return {
-            "count": len(found),
-            "read_mode": read_mode,
-            "collections": [
-                {"key": n.key, "name": n.name, "path": n.path, "item_count": n.item_count}
+        return rows(
+            "collections",
+            [
+                {
+                    'key': n.key,
+                    'name': n.name,
+                    'path': n.path,
+                    'item_count': n.item_count,
+                }
                 for n in found
             ],
-        }
+            read_mode=read_mode,
+        )
 
     def search_items(
         self,
@@ -348,23 +363,23 @@ class ZoteroContext:
         hits, read_mode = self._search_for(library_id).items(
             query, fuzzy=fuzzy, limit=limit, item_type=item_type
         )
-        return {
-            "query": query,
-            "fuzzy": fuzzy,
-            "count": len(hits),
-            "read_mode": read_mode,
-            "hits": [
+        return rows(
+            "hits",
+            [
                 {
-                    "item_key": h.item_key,
-                    "title": h.title,
-                    "item_type": h.item_type,
-                    "creators": h.creators,
-                    "score": h.score,
-                    "matched_on": h.matched_on,
+                    'item_key': h.item_key,
+                    'title': h.title,
+                    'item_type': h.item_type,
+                    'creators': h.creators,
+                    'score': h.score,
+                    'matched_on': h.matched_on,
                 }
                 for h in hits
             ],
-        }
+            read_mode=read_mode,
+            query=query,
+            fuzzy=fuzzy,
+        )
 
     def search_annotations(
         self,
@@ -377,43 +392,43 @@ class ZoteroContext:
         hits, read_mode = self.search.annotations(
             query, color=color, types=annotation_types, limit=limit
         )
-        return {
-            "query": query,
-            "count": len(hits),
-            "read_mode": read_mode,
-            "annotations": [
+        return rows(
+            "annotations",
+            [
                 {
-                    "annotation_key": h.annotation_key,
-                    "attachment_key": h.attachment_key,
-                    "parent_key": h.parent_key,
-                    "parent_title": h.parent_title,
-                    "type": h.annotation_type,
-                    "text": h.text,
-                    "comment": h.comment,
-                    "color": h.color,
-                    "page_label": h.page_label,
+                    'annotation_key': h.annotation_key,
+                    'attachment_key': h.attachment_key,
+                    'parent_key': h.parent_key,
+                    'parent_title': h.parent_title,
+                    'type': h.annotation_type,
+                    'text': h.text,
+                    'comment': h.comment,
+                    'color': h.color,
+                    'page_label': h.page_label,
                 }
                 for h in hits
             ],
-        }
+            read_mode=read_mode,
+            query=query,
+        )
 
     def search_fulltext(self, query: str, *, limit: int = 25) -> dict:
         hits, read_mode = self.search.fulltext(query, limit=limit)
-        return {
-            "query": query,
-            "count": len(hits),
-            "read_mode": read_mode,
-            "documents": [
+        return rows(
+            "documents",
+            [
                 {
-                    "attachment_key": h.attachment_key,
-                    "parent_key": h.parent_key,
-                    "title": h.title,
-                    "match_count": h.match_count,
-                    "snippets": list(h.snippets),
+                    'attachment_key': h.attachment_key,
+                    'parent_key': h.parent_key,
+                    'title': h.title,
+                    'match_count': h.match_count,
+                    'snippets': list(h.snippets),
                 }
                 for h in hits
             ],
-        }
+            read_mode=read_mode,
+            query=query,
+        )
 
     def attachment_text(self, attachment_key: str, *, max_chars: int = 20000) -> dict:
         text = self.search.attachment_text(attachment_key)
@@ -438,11 +453,11 @@ class ZoteroContext:
         sources = self.annotations.get_sources_with_annotations()
         if include_citekeys:
             sources = self._with_citekeys(sources)
-        return {
-            "count": len(sources),
-            "read_mode": self.annotations.last_read_mode,
-            "sources": list(sources),
-        }
+        return rows(
+            "sources",
+            list(sources),
+            read_mode=self.annotations.last_read_mode,
+        )
 
     def _with_citekeys(self, sources: list[ZoteroSource]) -> list[ZoteroSource]:
         """Better BibTeX keys, joined on. Split out so the envelope above reads as one

@@ -24,19 +24,6 @@ from zotero_core.domain.annotation_type import ANNOTATION_TYPE
 from zotero_core.infrastructure.http.bridge import ZoteroBridgeError
 from zotero_core.infrastructure.sqlite.connect import ZoteroReadError
 from zotero_core.interfaces import read_mcp
-from zotero_core.interfaces.factory import build_context
-
-
-@pytest.fixture()
-def ctx(zotero):
-    """A read facade aimed at the throwaway database, assembled by the real factory.
-
-    ⚠ REPLACES `monkeypatch.setattr(read_mcp, "_CTX", ctx)`. The adapter kept its context in
-    a module global built lazily on first use, so pointing it anywhere meant rewriting that
-    global -- five sites did. `call_read` takes `ctx=` now, so the substitution is an
-    argument and a wrong one is a TypeError rather than a silent no-op.
-    """
-    return build_context(zotero_db_path=zotero.path)
 
 
 @pytest.fixture()
