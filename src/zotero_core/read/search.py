@@ -32,7 +32,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-from ..domain.policy import DEFAULT_FUZZY_THRESHOLD, normalize_title, score_tokens
+from ..domain.services.policy import DEFAULT_FUZZY_THRESHOLD, normalize_title, score_tokens
 from .annotations import ANNOTATION_TYPE, DEFAULT_ZOTERO_DB
 from .connect import DEFAULT_BUSY_TIMEOUT_MS, USER_LIBRARY_ID, open_readonly
 

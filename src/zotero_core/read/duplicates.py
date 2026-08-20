@@ -46,8 +46,8 @@ from __future__ import annotations
 
 import re
 
-from ..domain.policy import normalize_title as _norm_title
-from ..domain.policy import surname_of as _surname
+from ..domain.services.policy import normalize_title as _norm_title
+from ..domain.services.policy import surname_of as _surname
 from .connect import open_readonly
 from .items import ZoteroItemStore
 

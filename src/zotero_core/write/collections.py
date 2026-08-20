@@ -21,8 +21,7 @@ member key, which together are enough to rebuild it by hand.
 
 from __future__ import annotations
 
-import re
-
+from ..domain.services.identity import is_key
 from ..read.items import ZoteroItemStore
 from .errors import Reason, WriteBlocked
 from .journal import write_manifest
@@ -30,8 +29,6 @@ from .liveness import require_zotero
 from .results import ok
 from .transports.cookjohn import CookjohnClient, find_key
 from .transports.linker import LinkerClient
-
-_KEY_RE = re.compile(r"^[A-Z0-9]{8}$")
 
 
 def _session(linker, cookjohn, store):
@@ -43,7 +40,7 @@ def _session(linker, cookjohn, store):
 
 
 def _check_collection_key(collection_key: str) -> str:
-    if not isinstance(collection_key, str) or not _KEY_RE.match(collection_key):
+    if not isinstance(collection_key, str) or not is_key(collection_key):
         raise WriteBlocked(
             Reason.MALFORMED_ITEM_KEY,
             f"{collection_key!r} is not a collection key (8 uppercase alphanumerics)",
@@ -92,7 +89,7 @@ def _member_keys(cookjohn, collection_key: str) -> list[str]:
         if isinstance(node, dict):
             for field in ("key", "itemKey"):
                 value = node.get(field)
-                if isinstance(value, str) and _KEY_RE.match(value):
+                if isinstance(value, str) and is_key(value):
                     keys.append(value)
                     return
             for value in node.values():

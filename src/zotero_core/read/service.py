@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from ..domain.entities import Annotation, ReaderContext, ReaderState, WindowState, ZoteroSource
+from ..domain.services.identity import is_key
 from .annotations import DEFAULT_ZOTERO_DB, ZoteroAnnotationStore
 from .bbt import DEFAULT_BBT_RPC_URL, BetterBibTeXClient
 from .bridge import DEFAULT_BRIDGE_URL, ZoteroBridgeClient
@@ -399,7 +400,19 @@ class ZoteroContext:
 
 
 def _looks_like_item_key(value: str) -> bool:
-    return len(value) == 8 and value.isalnum() and value.upper() == value
+    """Is this identifier a key, or something to look up in Better BibTeX?
+
+    ⚠ CHANGED 2026-08-19. This was `len(v) == 8 and v.isalnum() and v.upper() == v`, and
+    `str.isalnum()` is UNICODE-AWARE -- so it accepted full-width Latin, Greek capitals and
+    Roman-numeral characters that the write layer's regex rejects. The two layers disagreed
+    about what a key is: a string could pass here, be treated as a key rather than sent to
+    BBT, and then be refused downstream as malformed.
+
+    It now asks the one shared rule. The consequence is deliberate: input that cannot be a
+    valid key is no longer mistaken for one, and goes to BBT instead -- which is the right
+    place for anything that is not a key.
+    """
+    return is_key(value)
 
 
 def _node_to_dict(node) -> dict:

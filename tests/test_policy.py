@@ -12,7 +12,7 @@ import difflib
 
 import pytest
 
-from zotero_core.domain.policy import (
+from zotero_core.domain.services.policy import (
     DEFAULT_FUZZY_THRESHOLD,
     fuzzy_score,
     normalize_title,

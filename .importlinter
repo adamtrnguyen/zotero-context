@@ -125,11 +125,13 @@ forbidden_modules =
 # --------------------------------------------------------------------------
 # 5. the domain is pure  (NEW -- could not be expressed before the merge)
 # --------------------------------------------------------------------------
-# `domain` holds the rules that were duplicated because there was nowhere to put them:
-# the 8-char key regex lived in THREE files, and the title normaliser is described in
-# its own docstring as "a degraded copy of calibre-core's". A layer that cannot import
-# a driver is what stops them drifting apart again -- entities and policy must be
-# checkable without a database, a network, or an async runtime.
+# `domain` holds the rules that were duplicated because there was nowhere to put them.
+# ⚠ This comment used to say the key regex "lived in THREE files" as though the move had
+# happened. There were FIVE copies and FOUR implementations, and none was here. The rule
+# now lives in `domain/services/identity.py` and a test greps the package to keep it
+# there; one deliberate copy remains in the vendored transport, checked for drift.
+# A layer that cannot import a driver is what stops them drifting apart again --
+# entities and policy must be checkable without a database, a network, or an async runtime.
 [importlinter:contract:domain-is-pure]
 name = domain imports no driver -- no sqlite, no network, no mcp
 type = forbidden

@@ -160,7 +160,13 @@ class CookjohnClient:
             return text
 
 
+# ⚠ A DELIBERATE SECOND COPY of `domain.services.identity.KEY_PATTERN`, not an oversight.
+# This module is vendored VERBATIM into `calibre-zotero-jump`, which runs inside Calibre's
+# embedded Python and cannot see a uv virtualenv -- so it must stay import-standalone.
+# `tests/test_identity.py` asserts the two patterns are byte-identical: drift detection
+# without coupling.
 _KEY_RE = re.compile(r"^[A-Z0-9]{8}$")
+_EMBEDDED_KEY_RE = re.compile(r"\b([A-Z0-9]{8})\b")
 
 # Field names cookjohn uses for the key of a thing it just created, most specific
 # first. `write_item` answers with a nested `data.itemKey`; `create_collection` with a
@@ -209,7 +215,7 @@ def _keyed(payload, field: str) -> str | None:
 def _any_key(payload) -> str | None:
     """Last resort: the first key-shaped token anywhere, including inside prose."""
     if isinstance(payload, str):
-        match = re.search(r"\b([A-Z0-9]{8})\b", payload)
+        match = _EMBEDDED_KEY_RE.search(payload)
         return match.group(1) if match else None
     if isinstance(payload, dict):
         payload = list(payload.values())

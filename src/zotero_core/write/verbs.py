@@ -48,8 +48,8 @@ side effect of setting a different one.
 from __future__ import annotations
 
 import os
-import re
 
+from ..domain.services.identity import is_key
 from ..read.duplicates import check_duplicate
 from ..read.items import ZoteroItemStore
 from .errors import Reason, WriteBlocked
@@ -58,14 +58,6 @@ from .liveness import require_zotero
 from .results import ok
 from .transports.cookjohn import CookjohnClient, find_key
 from .transports.linker import LinkerClient
-
-# Eight characters, uppercase alphanumeric. Zotero's actual alphabet is narrower --
-# all 3405 keys in the live library use only `23456789ABCDEFGHIJKLMNPQRSTUVWXYZ`
-# (no 0, 1, or O) -- but this gate stays at [A-Z0-9] deliberately. A stricter class
-# could only add a way to WRONGLY refuse a key some future Zotero mints, and it would
-# buy nothing: a typo that lands inside the alphabet is caught by the existence gate,
-# which is the check that actually protects the caller.
-_KEY_RE = re.compile(r"^[A-Z0-9]{8}$")
 
 # `write_metadata`'s own description: "Only works on regular items, not notes or
 # attachments." Enforced here rather than left to the plugin, because this package
@@ -92,7 +84,7 @@ def check_keys(item_keys) -> list[str]:
     keys = list(dict.fromkeys(item_keys or []))
     if not keys:
         raise WriteBlocked(Reason.NO_ITEM_KEYS, "no item keys given — refusing an empty write")
-    bad = [k for k in keys if not isinstance(k, str) or not _KEY_RE.match(k)]
+    bad = [k for k in keys if not isinstance(k, str) or not is_key(k)]
     if bad:
         raise WriteBlocked(
             Reason.MALFORMED_ITEM_KEY,
@@ -179,7 +171,7 @@ def _create_preflight(
             "title is mandatory — an untitled item is near-unfindable in the Zotero GUI",
             {"given_fields": sorted(fields)},
         )
-    if collection_key and not _KEY_RE.match(collection_key):
+    if collection_key and not is_key(collection_key):
         raise WriteBlocked(
             Reason.MALFORMED_ITEM_KEY,
             f"{collection_key!r} is not a collection key",
