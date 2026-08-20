@@ -47,6 +47,7 @@ from pathlib import Path
 from zotero_core.domain.entities.models import (
     ItemState,
     ItemStates,
+    TagUsage,
     TrashedItem,
     ZoteroAttachment,
     ZoteroAttachments,
@@ -268,6 +269,59 @@ class ZoteroItemStore:
         for key, name in rows:
             out[key].append(name)
         return {k: tuple(sorted(v)) for k, v in out.items()}
+
+    def all_tags(self) -> tuple[tuple[TagUsage, ...], str]:
+        """Every tag in this library with the number of items carrying it.
+
+        Scoped to `library_id` like every other read here -- an unscoped version would mix
+        a group library's vocabulary into the personal one, which is exactly the shape of
+        error tag hygiene is trying to find.
+
+        Sorted by descending count then name: the question this answers is almost always
+        "which tags matter", and a 245-item tag and a 1-item tag are not the same finding.
+        """
+        conn, read_mode = self._connect()
+        try:
+            rows = conn.execute(
+                """
+                SELECT t.name, COUNT(it.itemID) AS n
+                  FROM tags t
+                  JOIN itemTags it ON it.tagID = t.tagID
+                  JOIN items i ON i.itemID = it.itemID
+                 WHERE i.libraryID = ?
+                 GROUP BY t.tagID
+                 ORDER BY n DESC, t.name COLLATE NOCASE
+                """,
+                (self.library_id,),
+            ).fetchall()
+        finally:
+            conn.close()
+        return tuple(TagUsage(name=r[0], item_count=int(r[1])) for r in rows), read_mode
+
+    def items_with_tag(self, name: str) -> tuple[tuple[str, ...], str]:
+        """Item keys carrying EXACTLY this tag name, case-sensitively.
+
+        Case-SENSITIVE on purpose, and it is the whole point: `art` and `Art` are two
+        different rows in `tags`, and a merge has to address them separately. A
+        case-insensitive match here would make the two indistinguishable and the merge
+        impossible to target.
+        """
+        conn, read_mode = self._connect()
+        try:
+            rows = conn.execute(
+                """
+                SELECT i.key
+                  FROM items i
+                  JOIN itemTags it ON it.itemID = i.itemID
+                  JOIN tags t ON t.tagID = it.tagID
+                 WHERE i.libraryID = ? AND t.name = ?
+                 ORDER BY i.key
+                """,
+                (self.library_id, name),
+            ).fetchall()
+        finally:
+            conn.close()
+        return tuple(r[0] for r in rows), read_mode
 
     def item_fields(self, key: str) -> dict[str, str]:
         """Every populated metadata field on one item, as {fieldName: value}."""

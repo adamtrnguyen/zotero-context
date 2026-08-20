@@ -87,6 +87,11 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser(
         "trash-count", parents=[common], help="How many items are in this library's trash"
     )
+    sub.add_parser("tags", parents=[common], help="Every tag with its item count")
+    p_iwt = sub.add_parser(
+        "items-with-tag", parents=[common], help="Item keys carrying EXACTLY this tag"
+    )
+    p_iwt.add_argument("name")
     sub.add_parser(
         "trash-items",
         parents=[common],
@@ -193,6 +198,8 @@ _HANDLERS: dict[str, Callable[[ZoteroContext, argparse.Namespace], Any]] = {
     "pdfs": lambda ctx, a: ctx.list_pdfs(limit=a.limit),
     "trash-count": lambda ctx, _a: ctx.trash_count(),
     "trash-items": lambda ctx, _a: ctx.trash_items(),
+    "tags": lambda ctx, _a: ctx.tags(),
+    "items-with-tag": lambda ctx, a: ctx.items_with_tag(a.name),
     "libraries": lambda ctx, _a: ctx.list_libraries(),
     "collections": lambda ctx, a: ctx.collection_tree(library_id=a.library_id),
     "collection-items": lambda ctx, a: ctx.collection_items(

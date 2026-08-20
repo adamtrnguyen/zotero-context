@@ -185,6 +185,14 @@ def get_zotero_trash_items(*, ctx: ZoteroContext) -> dict:
     return ctx.trash_items()
 
 
+def get_zotero_tags(*, ctx: ZoteroContext) -> dict:
+    return ctx.tags()
+
+
+def get_zotero_items_with_tag(name: str, *, ctx: ZoteroContext) -> dict:
+    return ctx.items_with_tag(name)
+
+
 def ping_zotero(*, ctx: ZoteroContext) -> dict:
     # CLI-only until now, so an agent could not ask "is the bridge up?" -- it could only
     # infer it from the shape of a failure.
@@ -406,6 +414,25 @@ TOOLS: tuple[_ToolSpec, ...] = (
             "Scoped like every other read here — a machine with group libraries will see a "
             "smaller number than Zotero's global trash view."
         ),
+    ),
+    _ToolSpec(
+        name="get_zotero_tags",
+        verb=get_zotero_tags,
+        description=(
+            "Every tag in the library with how many items carry it, most-used first. The "
+            "only way to see the tag VOCABULARY — every other read answers per-item — so "
+            "it is what makes hygiene questions (case collisions, near-duplicates) askable."
+        ),
+    ),
+    _ToolSpec(
+        name="get_zotero_items_with_tag",
+        verb=get_zotero_items_with_tag,
+        description=(
+            "Item keys carrying EXACTLY this tag, CASE-SENSITIVELY. `art` and `Art` are "
+            "different tags and this distinguishes them, which is what a merge needs."
+        ),
+        properties={"name": {"type": "string"}},
+        required=("name",),
     ),
     _ToolSpec(
         name="get_zotero_trash_items",

@@ -235,3 +235,17 @@ class TrashedItem:
     title: str
     item_type: str
     date_deleted: str
+
+
+@dataclass(frozen=True)
+class TagUsage:
+    """One tag name and how many items in this library carry it.
+
+    Exists because "which tags does the library have" had no reader at all: `item_tags`
+    answers per-item, so enumerating the vocabulary meant walking every item or writing
+    SQL outside this package — the thing the suite rule forbids. Tag hygiene (case
+    collisions, near-duplicates) is unanswerable without it.
+    """
+
+    name: str
+    item_count: int

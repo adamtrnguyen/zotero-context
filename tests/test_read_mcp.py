@@ -491,3 +491,45 @@ def test_trashed_items_can_be_named_and_dated(zotero, ctx):
     assert out["read_mode"] in {"mode=ro", "immutable=1"}
     # newest first, so "what did I just delete" is the first row rather than the last
     assert [i["key"] for i in out["items"]] == ["NEW00001", "OLD00001"]
+
+
+# --------------------------------------------------------------------------
+# tags -- the vocabulary had no reader at all
+# --------------------------------------------------------------------------
+
+
+def test_the_tag_vocabulary_is_readable(zotero, ctx):
+    """`item_tags` answers PER ITEM, so "which tags exist" meant walking every item or
+    writing SQL outside the package. That gap is why 35 case-colliding tag groups sat
+    unnoticed in the live library."""
+    zotero.add("AAAA1111", "One", tags=["art", "shared"])
+    zotero.add("BBBB2222", "Two", tags=["shared"])
+
+    out = ctx.tags()
+    counts = {t["name"]: t["item_count"] for t in out["tags"]}
+    assert counts["shared"] == 2
+    assert counts["art"] == 1
+    assert out["count"] == len(out["tags"])
+    assert out["read_mode"] in {"mode=ro", "immutable=1"}
+
+
+def test_tag_lookup_is_case_sensitive(zotero, ctx):
+    """THE PROPERTY A MERGE DEPENDS ON. `art` and `Art` are separate rows in `tags`; a
+    case-insensitive lookup would make them indistinguishable and the merge untargetable."""
+    zotero.add("AAAA1111", "One", tags=["art"])
+    zotero.add("BBBB2222", "Two", tags=["Art"])
+
+    assert ctx.items_with_tag("art")["item_keys"] == ["AAAA1111"]
+    assert ctx.items_with_tag("Art")["item_keys"] == ["BBBB2222"]
+    assert ctx.items_with_tag("ART")["count"] == 0
+
+
+def test_tags_are_scoped_to_one_library(zotero, ctx):
+    """Scoped like every other read. An unscoped version would mix a group library's
+    vocabulary into the personal one -- the exact shape of error tag hygiene looks for."""
+    zotero.add("MINE0001", "mine", tags=["local"], library_id=1)
+    zotero.add("THEIR001", "theirs", tags=["remote"], library_id=2)
+
+    names = {t["name"] for t in ctx.tags()["tags"]}
+    assert "local" in names
+    assert "remote" not in names, "tag vocabulary is leaking across libraries"

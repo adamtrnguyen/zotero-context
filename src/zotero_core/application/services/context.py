@@ -266,6 +266,32 @@ class ZoteroContext:
         count, read_mode = self.items.trashed_count()
         return {"count": count, "read_mode": read_mode}
 
+    def tags(self) -> dict:
+        """Every tag in the library with its item count, most-used first.
+
+        There was no way to ask this at all: `item_tags` answers per-item, so enumerating
+        the vocabulary meant walking every item or writing SQL outside the package. Tag
+        hygiene is unanswerable without it — the 35 case-colliding groups this found
+        (`art`/`Art`, `philosophy`/`Philosophy`, a three-way `decontamination`) were
+        invisible to every existing read.
+        """
+        tags, read_mode = self.items.all_tags()
+        return rows(
+            "tags",
+            [{"name": t.name, "item_count": t.item_count} for t in tags],
+            read_mode=read_mode,
+        )
+
+    def items_with_tag(self, name: str) -> dict:
+        """Item keys carrying EXACTLY this tag, case-sensitively.
+
+        Case-sensitive is the point: `art` and `Art` are separate rows, and a merge has to
+        address them separately. A case-insensitive match would make them indistinguishable
+        and the merge impossible to target.
+        """
+        keys, read_mode = self.items.items_with_tag(name)
+        return rows("item_keys", list(keys), read_mode=read_mode, tag=name)
+
     def trash_items(self) -> dict:
         """WHAT is in the trash, each with the date it was deleted.
 

@@ -49,6 +49,7 @@ def test_unknown_command_raises():
         (["pdfs", "--limit", "3"], "pdfs"),
         (["trash-count"], "trash-count"),
         (["trash-items"], "trash-items"),
+        (["items-with-tag", "art"], "items-with-tag"),
     ],
 )
 def test_the_catalogue_verbs_parse(argv, expected):
@@ -86,6 +87,8 @@ def test_the_cli_and_the_mcp_surface_expose_the_same_catalogue_reads():
         "pdfs": "list_zotero_pdfs",
         "trash-count": "get_zotero_trash_count",
         "trash-items": "get_zotero_trash_items",
+        "tags": "get_zotero_tags",
+        "items-with-tag": "get_zotero_items_with_tag",
         "ping": "ping_zotero",
         "window-state": "get_zotero_window_state",
         "annotations": "get_zotero_annotations",
