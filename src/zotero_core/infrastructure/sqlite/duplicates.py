@@ -44,11 +44,11 @@ a third time.
 
 from __future__ import annotations
 
-from ..domain.services.identifiers import _calibre_uuids, clean_doi, clean_isbn
-from ..domain.services.policy import normalize_title as _norm_title
-from ..domain.services.policy import surname_of as _surname
-from .connect import open_readonly
-from .items import ZoteroItemStore
+from zotero_core.domain.services.identifiers import _calibre_uuids, clean_doi, clean_isbn
+from zotero_core.domain.services.policy import normalize_title as _norm_title
+from zotero_core.domain.services.policy import surname_of as _surname
+from zotero_core.infrastructure.sqlite.connect import open_readonly
+from zotero_core.infrastructure.sqlite.items import ZoteroItemStore
 
 
 def check_duplicate(

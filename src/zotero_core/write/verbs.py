@@ -14,7 +14,7 @@ copying a client. Which transport serves a verb is now an implementation detail 
 that verb -- visible in the `transport` field of the result for debugging, never in
 the signature.
 
-Reads are NOT re-exported here. `zotero_core.read` owns them and is already
+Reads are NOT re-exported here. `zotero_core.infrastructure` owns them and is already
 correct; wrapping them would create a second answer to "what is in the library",
 which is the exact failure this package exists to end.
 
@@ -49,15 +49,15 @@ from __future__ import annotations
 
 import os
 
-from ..domain.services.identity import is_key
-from ..read.duplicates import check_duplicate
-from ..read.items import ZoteroItemStore
-from .errors import Reason, WriteBlocked
-from .journal import copy_database, write_manifest
-from .liveness import require_zotero
-from .results import ok
-from .transports.cookjohn import CookjohnClient, find_key
-from .transports.linker import LinkerClient
+from zotero_core.domain.errors import Reason, WriteBlocked
+from zotero_core.domain.services.identity import is_key
+from zotero_core.infrastructure.journal import copy_database, write_manifest
+from zotero_core.infrastructure.sqlite.duplicates import check_duplicate
+from zotero_core.infrastructure.sqlite.items import ZoteroItemStore
+from zotero_core.infrastructure.transports.cookjohn import CookjohnClient, find_key
+from zotero_core.infrastructure.transports.linker import LinkerClient
+from zotero_core.write.liveness import require_zotero
+from zotero_core.write.results import ok
 
 # `write_metadata`'s own description: "Only works on regular items, not notes or
 # attachments." Enforced here rather than left to the plugin, because this package
@@ -263,7 +263,7 @@ def create_item(
         versions=info,
     )
     if collection_key:
-        from .collections import add_items_to_collection
+        from zotero_core.write.collections import add_items_to_collection
 
         result["collection"] = add_items_to_collection(
             collection_key, [item_key], linker=session.linker,

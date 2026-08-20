@@ -13,8 +13,8 @@ import pathlib
 
 import pytest
 
+from zotero_core.domain.errors import Reason, WriteBlocked
 from zotero_core.write.collections import move_items_between_collections
-from zotero_core.write.errors import Reason, WriteBlocked
 
 
 def _setup(zotero):

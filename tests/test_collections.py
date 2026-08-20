@@ -12,7 +12,7 @@ import sqlite3
 
 import pytest
 
-from zotero_core.read.collections import MAX_DEPTH, ZoteroCollectionStore
+from zotero_core.infrastructure.sqlite.collections import MAX_DEPTH, ZoteroCollectionStore
 
 
 @pytest.fixture()

@@ -21,14 +21,14 @@ member key, which together are enough to rebuild it by hand.
 
 from __future__ import annotations
 
-from ..domain.services.identity import is_key
-from ..read.items import ZoteroItemStore
-from .errors import Reason, WriteBlocked
-from .journal import write_manifest
-from .liveness import require_zotero
-from .results import ok
-from .transports.cookjohn import CookjohnClient, find_key
-from .transports.linker import LinkerClient
+from zotero_core.domain.errors import Reason, WriteBlocked
+from zotero_core.domain.services.identity import is_key
+from zotero_core.infrastructure.journal import write_manifest
+from zotero_core.infrastructure.sqlite.items import ZoteroItemStore
+from zotero_core.infrastructure.transports.cookjohn import CookjohnClient, find_key
+from zotero_core.infrastructure.transports.linker import LinkerClient
+from zotero_core.write.liveness import require_zotero
+from zotero_core.write.results import ok
 
 
 def _session(linker, cookjohn, store):
@@ -256,7 +256,7 @@ def _verify_collection(store, collection_key: str, *, name=None, parent_key=None
     the same reason: `update_collection` may rename, re-parent, or both, and checking a
     field the caller never set would invent a failure.
     """
-    from ..read.collections import ZoteroCollectionStore
+    from zotero_core.infrastructure.sqlite.collections import ZoteroCollectionStore
 
     reader = ZoteroCollectionStore(store.db_path, busy_timeout_ms=store.busy_timeout_ms)
     tree = reader.tree()
@@ -281,7 +281,7 @@ def _verify_collection(store, collection_key: str, *, name=None, parent_key=None
 
 
 def _members_of(store, collection_key: str) -> tuple[set[str], str]:
-    from ..read.collections import ZoteroCollectionStore
+    from zotero_core.infrastructure.sqlite.collections import ZoteroCollectionStore
 
     reader = ZoteroCollectionStore(store.db_path, busy_timeout_ms=store.busy_timeout_ms)
     members = reader.items(collection_key, include_trashed=True)
@@ -332,7 +332,7 @@ def _verify_gone(store, collection_key: str) -> dict:
     the caller to rebuild something that is already gone, which for a collection means
     recreating it under a NEW key and re-filing every member.
     """
-    from ..read.collections import ZoteroCollectionStore
+    from zotero_core.infrastructure.sqlite.collections import ZoteroCollectionStore
 
     reader = ZoteroCollectionStore(store.db_path, busy_timeout_ms=store.busy_timeout_ms)
     tree = reader.tree()
@@ -435,7 +435,7 @@ def add_items_to_collection(
     store=None,
 ) -> dict:
     """File items into a collection. No manifest — the inverse is a removal."""
-    from .verbs import check_keys, require_items
+    from zotero_core.write.verbs import check_keys, require_items
 
     linker, cookjohn, store = _session(linker, cookjohn, store)
     _check_collection_key(collection_key)
@@ -477,7 +477,7 @@ def remove_items_from_collection(
     this and `trash_items` is exactly the one a caller in a hurry gets wrong. Nothing
     here deletes an item.
     """
-    from .verbs import check_keys, require_items
+    from zotero_core.write.verbs import check_keys, require_items
 
     linker, cookjohn, store = _session(linker, cookjohn, store)
     _check_collection_key(collection_key)
@@ -550,8 +550,8 @@ def move_items_between_collections(
     `force`, in which case it files them into the target and says which were not in the
     source.
     """
-    from ..read.collections import ZoteroCollectionStore
-    from .verbs import check_keys, require_items
+    from zotero_core.infrastructure.sqlite.collections import ZoteroCollectionStore
+    from zotero_core.write.verbs import check_keys, require_items
 
     linker, cookjohn, store = _session(linker, cookjohn, store)
     _check_collection_key(from_collection_key)

@@ -20,7 +20,7 @@ from pathlib import Path
 
 import pytest
 
-from zotero_core.read.duplicates import check_duplicate, clean_doi, clean_isbn
+from zotero_core.infrastructure.sqlite.duplicates import check_duplicate, clean_doi, clean_isbn
 from zotero_core.write import (
     Reason,
     WriteBlocked,

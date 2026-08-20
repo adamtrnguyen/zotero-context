@@ -2,16 +2,17 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ..domain.entities import Annotation, ReaderContext, ReaderState, WindowState, ZoteroSource
-from ..domain.services.identity import is_key
-from .annotations import DEFAULT_ZOTERO_DB, ZoteroAnnotationStore
-from .bbt import DEFAULT_BBT_RPC_URL, BetterBibTeXClient
-from .bridge import DEFAULT_BRIDGE_URL, ZoteroBridgeClient
-from .collections import ZoteroCollectionStore
-from .duplicates import check_duplicate as _check_duplicate
-from .items import ZoteroItemStore
-from .libraries import list_libraries
-from .search import ZoteroSearchStore
+from zotero_core.domain.entities.gui import ReaderContext, ReaderState, WindowState
+from zotero_core.domain.entities.models import Annotation, ZoteroSource
+from zotero_core.domain.services.identity import is_key
+from zotero_core.infrastructure.http.bbt import DEFAULT_BBT_RPC_URL, BetterBibTeXClient
+from zotero_core.infrastructure.http.bridge import DEFAULT_BRIDGE_URL, ZoteroBridgeClient
+from zotero_core.infrastructure.sqlite.annotations import DEFAULT_ZOTERO_DB, ZoteroAnnotationStore
+from zotero_core.infrastructure.sqlite.collections import ZoteroCollectionStore
+from zotero_core.infrastructure.sqlite.duplicates import check_duplicate as _check_duplicate
+from zotero_core.infrastructure.sqlite.items import ZoteroItemStore
+from zotero_core.infrastructure.sqlite.libraries import list_libraries
+from zotero_core.infrastructure.sqlite.search import ZoteroSearchStore
 
 
 class ZoteroContext:

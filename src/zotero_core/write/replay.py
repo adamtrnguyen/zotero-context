@@ -58,9 +58,9 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
-from .errors import Reason, WriteBlocked
-from .journal import DEFAULT_JOURNAL_DIR
-from .results import ok
+from zotero_core.domain.errors import Reason, WriteBlocked
+from zotero_core.infrastructure.journal import DEFAULT_JOURNAL_DIR
+from zotero_core.write.results import ok
 
 PLACEHOLDER_MARKERS = ("<", ">")
 
@@ -99,8 +99,8 @@ class Entry:
 def _replayable_verbs() -> dict[str, Callable[..., dict]]:
     """The whitelist. Imported lazily so this module stays importable without a live
     Zotero, and so `write/__init__` can export `undo` without a circular import."""
-    from . import collections as coll
-    from . import verbs
+    from zotero_core.write import collections as coll
+    from zotero_core.write import verbs
 
     return {
         "add_items_to_collection": coll.add_items_to_collection,

@@ -120,7 +120,7 @@ def test_the_replacement_for_get_item_details_reports_a_real_item_type(zotero, m
     2026-08-19 against a live zotero.sqlite that reported `journalArticle` for the same
     keys. An agent reading an item to decide what to do next got a blank type.
     """
-    from zotero_core.read.service import ZoteroContext
+    from zotero_core.infrastructure.service import ZoteroContext
 
     monkeypatch.setattr(read_mcp, "_CTX", ZoteroContext(zotero_db_path=zotero.path))
     zotero.add("AAAA1111", title="A Paper", item_type="conferencePaper")
@@ -131,7 +131,7 @@ def test_the_replacement_for_get_item_details_reports_a_real_item_type(zotero, m
 def test_search_parity_is_an_improvement_not_a_regression(zotero, monkeypatch):
     """`search_library` is cookjohn's substring search. The replacement is fuzzy, so it
     answers a query cookjohn returns nothing for."""
-    from zotero_core.read.service import ZoteroContext
+    from zotero_core.infrastructure.service import ZoteroContext
 
     monkeypatch.setattr(read_mcp, "_CTX", ZoteroContext(zotero_db_path=zotero.path))
     zotero.add("AAAA1111", title="Bayesian Learning via Stochastic Gradient Langevin Dynamics")
@@ -146,7 +146,7 @@ def test_group_libraries_are_reachable_rather_than_scoped_away(zotero, monkeypat
     this machine."""
     import sqlite3
 
-    from zotero_core.read.service import ZoteroContext
+    from zotero_core.infrastructure.service import ZoteroContext
 
     monkeypatch.setattr(read_mcp, "_CTX", ZoteroContext(zotero_db_path=zotero.path))
     con = sqlite3.connect(zotero.path)

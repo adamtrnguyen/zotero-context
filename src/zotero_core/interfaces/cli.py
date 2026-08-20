@@ -6,11 +6,11 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from ..domain.entities import to_jsonable
-from ..read.annotations import DEFAULT_ZOTERO_DB
-from ..read.bbt import DEFAULT_BBT_RPC_URL
-from ..read.bridge import DEFAULT_BRIDGE_URL
-from ..read.service import ZoteroContext
+from zotero_core.domain.entities.models import to_jsonable
+from zotero_core.infrastructure.http.bbt import DEFAULT_BBT_RPC_URL
+from zotero_core.infrastructure.http.bridge import DEFAULT_BRIDGE_URL
+from zotero_core.infrastructure.service import ZoteroContext
+from zotero_core.infrastructure.sqlite.annotations import DEFAULT_ZOTERO_DB
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -22,8 +22,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from .annotations import DEFAULT_ZOTERO_DB
-from .connect import DEFAULT_BUSY_TIMEOUT_MS, open_readonly
+from zotero_core.infrastructure.sqlite.annotations import DEFAULT_ZOTERO_DB
+from zotero_core.infrastructure.sqlite.connect import DEFAULT_BUSY_TIMEOUT_MS, open_readonly
 
 _LIBRARIES_SQL = """
 SELECT l.libraryID,

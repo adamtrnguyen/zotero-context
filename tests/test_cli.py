@@ -12,8 +12,8 @@ import argparse
 
 import pytest
 
+from zotero_core.infrastructure.service import ZoteroContext
 from zotero_core.interfaces import cli, read_mcp
-from zotero_core.read.service import ZoteroContext
 
 
 def _subcommands() -> set[str]:

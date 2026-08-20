@@ -81,7 +81,7 @@ def wired(zotero, linker, cookjohn, monkeypatch, tmp_path):
     name is enough -- and it is the only way in, because the MCP surface has no
     injection parameter by design.
     """
-    monkeypatch.setattr("zotero_core.read.items.DEFAULT_ZOTERO_DB", zotero.path)
+    monkeypatch.setattr("zotero_core.infrastructure.sqlite.items.DEFAULT_ZOTERO_DB", zotero.path)
     for module in (
         "zotero_core.write.verbs",
         "zotero_core.write.collections",

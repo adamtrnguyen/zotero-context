@@ -37,8 +37,7 @@ which also keeps the CRUD surface a deliberate act rather than something a calle
 gets by accident.
 """
 
-from .domain.entities import (
-    Annotation,
+from zotero_core.domain.entities.gui import (
     ReaderContext,
     ReaderPosition,
     ReaderState,
@@ -46,14 +45,15 @@ from .domain.entities import (
     WindowState,
     ZoteroCollection,
     ZoteroItem,
-    ZoteroSource,
 )
-from .domain.services.identifiers import clean_doi, clean_isbn
-from .read.annotations import ZoteroAnnotationStore
-from .read.bbt import BetterBibTeXClient
-from .read.bridge import ZoteroBridgeClient
-from .read.duplicates import check_duplicate
-from .read.items import (
+from zotero_core.domain.entities.models import Annotation, ZoteroSource
+from zotero_core.domain.services.identifiers import clean_doi, clean_isbn
+from zotero_core.infrastructure.http.bbt import DEFAULT_BBT_RPC_URL, BetterBibTeXClient
+from zotero_core.infrastructure.http.bridge import ZoteroBridgeClient
+from zotero_core.infrastructure.service import ZoteroContext
+from zotero_core.infrastructure.sqlite.annotations import DEFAULT_ZOTERO_DB, ZoteroAnnotationStore
+from zotero_core.infrastructure.sqlite.duplicates import check_duplicate
+from zotero_core.infrastructure.sqlite.items import (
     USER_LIBRARY_ID,
     ItemState,
     ItemStates,
@@ -61,11 +61,52 @@ from .read.items import (
     ZoteroAttachments,
     ZoteroItemStore,
 )
-from .read.service import ZoteroContext
+from zotero_core.infrastructure.transports.cookjohn import CookjohnClient
+from zotero_core.infrastructure.transports.linker import LinkerClient
 
 __version__ = "0.2.0"
 
+# The three WRITE VERBS are published LAZILY, and the reason is a real contract failure
+# rather than a preference. Importing `zotero_core.anything` executes THIS file first
+# (Python imports ancestor packages), so a module-level `from zotero_core.write.verbs
+# import ...` here makes every layer -- including `domain` -- depend on `write`. That is
+# precisely what `interfaces above write above infrastructure above domain` forbids, and
+# import-linter caught it: `infrastructure.service -> zotero_core -> write.verbs`.
+#
+# PEP 562 defers the import to first ATTRIBUTE ACCESS, so `from zotero_core import
+# write_note` still works, `hasattr` still works, and no import-time edge exists for the
+# contract to trip on. The two transports above stay eager because they are
+# `infrastructure`, which this file is already allowed to import.
+#
+# This is the cost of keeping re-exports at all -- omni-rag's convention is "never", and
+# this package deviates on purpose because `__all__` IS its published API.
+_LAZY_WRITE_VERBS = ("import_attachment", "update_metadata", "write_note")
+
+
+def __getattr__(name: str):
+    if name in _LAZY_WRITE_VERBS:
+        import importlib
+
+        value = getattr(importlib.import_module("zotero_core.write.verbs"), name)
+        globals()[name] = value  # cached: __getattr__ is not consulted again
+        return value
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
 __all__ = [
+    # ⚠ THE WRITE SURFACE IS PUBLISHED TOO, as of 2026-08-19. This list was read-only for
+    # as long as `core/` was a read-only package, and the merge made that a leftover rather
+    # than a rule: `youtube2zotero/promote.py` needs writes, so it imported
+    # `zotero_core.write.transports.cookjohn` and `zotero_core.write.verbs` directly. That
+    # is the same reach-past-the-surface that broke `arxiv-bulk`, and it was about to break
+    # twice more -- once when `transports/` moved to `infrastructure/`, and again when
+    # `write/` becomes `application/`. Publishing the four names it actually uses makes both
+    # moves invisible to it. Publishing is the CHEAP half of the deal; the surface is frozen
+    # by `tests/test_public_api.py`, so adding a name here is a deliberate commitment.
+    # Defaults consumers actually need. Added 2026-08-19 because `arxiv-bulk` was importing
+    # them from `read.annotations` / `read.bbt` directly -- reaching past the public surface
+    # into modules that were about to move, which is how it broke earlier the same day.
+    "DEFAULT_BBT_RPC_URL",
+    "DEFAULT_ZOTERO_DB",
     "USER_LIBRARY_ID",
     "Annotation",
     "BetterBibTeXClient",
@@ -89,4 +130,9 @@ __all__ = [
     "check_duplicate",
     "clean_doi",
     "clean_isbn",
+    "CookjohnClient",
+    "LinkerClient",
+    "import_attachment",
+    "update_metadata",
+    "write_note",
 ]

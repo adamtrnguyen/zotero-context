@@ -20,7 +20,7 @@ implemented locally, and the transport choice stays where `writes.py` put it.
 
 WHAT IT DOES NOT EXPOSE, AND WHY
 --------------------------------
-**No read tools.** `zotero_core.read` owns reads, and the sibling adapter
+**No read tools.** `zotero_core.infrastructure` owns reads, and the sibling adapter
 docstring's rule is that wrapping them "would create a second answer to what is in the
 library, which is the exact failure this package exists to end". The registered
 `zotero-context` server already serves that half.
@@ -68,10 +68,15 @@ import asyncio
 import json
 from typing import Any
 
-from .. import __version__
-from ..domain.entities import to_jsonable
-from ..read.items import ZoteroItemStore
-from ..write.collections import (
+from zotero_core import __version__
+from zotero_core.domain.entities.models import to_jsonable
+from zotero_core.domain.errors import WriteBlocked
+from zotero_core.infrastructure.sqlite.items import ZoteroItemStore
+from zotero_core.infrastructure.transports.cookjohn import CookjohnClient
+from zotero_core.infrastructure.transports.linker import LinkerClient
+from zotero_core.interfaces.tool_spec import WriteToolSpec as _ToolSpec
+from zotero_core.interfaces.tool_spec import dispatch as _dispatch
+from zotero_core.write.collections import (
     add_items_to_collection,
     create_collection,
     delete_collection,
@@ -79,13 +84,10 @@ from ..write.collections import (
     remove_items_from_collection,
     update_collection,
 )
-from ..write.errors import WriteBlocked
-from ..write.liveness import ZOTERO_SERVER_URL, zotero_is_running
-from ..write.replay import list_entries as _list_entries
-from ..write.replay import undo as _undo
-from ..write.transports.cookjohn import CookjohnClient
-from ..write.transports.linker import LinkerClient
-from ..write.verbs import (
+from zotero_core.write.liveness import ZOTERO_SERVER_URL, zotero_is_running
+from zotero_core.write.replay import list_entries as _list_entries
+from zotero_core.write.replay import undo as _undo
+from zotero_core.write.verbs import (
     add_tags,
     check_keys,
     create_item,
@@ -100,8 +102,6 @@ from ..write.verbs import (
     update_metadata,
     write_note,
 )
-from .tool_spec import WriteToolSpec as _ToolSpec
-from .tool_spec import dispatch as _dispatch
 
 SERVER_NAME = "zotero-writes"
 

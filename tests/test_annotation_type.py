@@ -57,7 +57,7 @@ def test_the_schema_list_is_derived_not_transcribed():
 def test_the_legacy_dict_shape_still_resolves_where_it_did():
     """`read.annotations.ANNOTATION_TYPE` is imported by name in the test suite and by the
     MCP adapter; the declaration moved, the name did not."""
-    from zotero_core.read import annotations
+    from zotero_core.infrastructure.sqlite import annotations
 
     assert annotations.ANNOTATION_TYPE is ANNOTATION_TYPE
     assert ANNOTATION_TYPE == {1: "highlight", 2: "note", 3: "image", 4: "ink",

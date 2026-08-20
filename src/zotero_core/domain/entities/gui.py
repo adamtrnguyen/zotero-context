@@ -1,7 +1,23 @@
+"""The zotero-bridge payload: what the Zotero window is showing right now.
+
+Every type here is built by `from_bridge` from the JSON at
+`:23119/zotero-bridge/window-state`, and every one accepts BOTH camelCase and snake_case
+because the plugin has emitted both. `WindowState.raw` keeps the untransformed payload.
+
+That tolerance is why these sit apart from `models.py`: it is anti-corruption for one HTTP
+contract, not a description of Zotero. They are live GUI state — an item selected here has
+no more claim to be "the" item than any other row in the database.
+
+`ReaderContext` is the one join across both files: a bridge `ReaderState` plus a BBT citekey
+plus SQL `Annotation`s.
+"""
+
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from typing import Any
+
+from zotero_core.domain.entities.models import Annotation
 
 
 @dataclass(frozen=True)
@@ -19,7 +35,6 @@ class ZoteroCollection:
             name=str(data.get("name") or ""),
             id=data.get("id"),
         )
-
 
 @dataclass(frozen=True)
 class ZoteroItem:
@@ -39,7 +54,6 @@ class ZoteroItem:
             parent_key=data.get("parentKey") or data.get("parent_key"),
         )
 
-
 @dataclass(frozen=True)
 class TabState:
     type: str
@@ -55,7 +69,6 @@ class TabState:
             item_id=data.get("itemID") or data.get("item_id"),
             selected=bool(data.get("selected")),
         )
-
 
 @dataclass(frozen=True)
 class ReaderPosition:
@@ -74,7 +87,6 @@ class ReaderPosition:
             scroll_y_percent=_pick(data, "scrollYPercent", "scroll_y_percent"),
             cfi=data.get("cfi"),
         )
-
 
 @dataclass(frozen=True)
 class ReaderState:
@@ -97,7 +109,6 @@ class ReaderState:
             title=data.get("title"),
             position=ReaderPosition.from_bridge(data.get("position")),
         )
-
 
 @dataclass(frozen=True)
 class WindowState:
@@ -136,46 +147,10 @@ class WindowState:
 
 
 @dataclass(frozen=True)
-class ZoteroSource:
-    parent_key: str
-    attachment_key: str
-    title: str
-    authors: str
-    annotation_count: int
-    citekey: str = ""
-
-
-@dataclass(frozen=True)
-class Annotation:
-    key: str
-    attachment_key: str
-    parent_key: str | None
-    type: str
-    page_label: str
-    color: str
-    text: str
-    comment: str
-    sort_index: str
-    zotero_url: str
-
-
-@dataclass(frozen=True)
 class ReaderContext:
     reader: ReaderState
     citekey: str = ""
     annotations: list[Annotation] | None = None
-
-
-def to_jsonable(value: Any) -> Any:
-    if hasattr(value, "__dataclass_fields__"):
-        return {k: to_jsonable(v) for k, v in asdict(value).items()}
-    if isinstance(value, list):
-        return [to_jsonable(v) for v in value]
-    if isinstance(value, tuple):
-        return [to_jsonable(v) for v in value]
-    if isinstance(value, dict):
-        return {str(k): to_jsonable(v) for k, v in value.items()}
-    return value
 
 
 def _pick(data: dict[str, Any], *keys: str) -> Any:

@@ -46,7 +46,7 @@ def test_what_is_not_a_key(value, why):
 def test_the_read_layer_now_asks_the_same_question_as_the_write_layer():
     """The specific bug: a string could pass the read-side check, be treated as an item key
     rather than sent to Better BibTeX, and then be refused downstream as malformed."""
-    from zotero_core.read.service import _looks_like_item_key
+    from zotero_core.infrastructure.service import _looks_like_item_key
 
     for value in ("ＡＲＴＩＮＷＱＺ", "ⅠⅠⅠⅠⅠⅠⅠⅠ", "ABCDΕΦΓΗ"):
         assert _looks_like_item_key(value) == is_key(value) is False
@@ -72,7 +72,7 @@ def test_the_vendored_copy_has_not_drifted():
     a uv virtualenv, so it must stay import-standalone. It cannot share the code — but it
     can be checked against it, which is the whole point of this test.
     """
-    from zotero_core.write.transports import cookjohn
+    from zotero_core.infrastructure.transports import cookjohn
 
     assert cookjohn._KEY_RE.pattern == KEY_PATTERN
     assert cookjohn._EMBEDDED_KEY_RE.pattern == EMBEDDED_KEY_PATTERN

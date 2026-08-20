@@ -56,7 +56,20 @@ line-length = 100
 [tool.ruff.lint]
 # Same rule set as calibre-core and the rest of Adam's Python: pycodestyle + pyflakes,
 # import order, bugbear, pyupgrade, complexity ceiling.
-select = ["E", "F", "I", "B", "UP", "C901"]
+select = ["E", "F", "I", "B", "UP", "C901", "TID"]
+
+# Absolute imports only, matching `omni-rag` (which sets the same rule). This is not
+# style: the Phase-2 move shifted seven modules one directory deeper, and every
+# `from ..domain import` in them kept parsing while silently meaning something new.
+# An absolute path breaks loudly at the moment a file moves, which is when you want it.
+[tool.ruff.lint.flake8-tidy-imports]
+ban-relative-imports = "all"
+
+[tool.ruff.lint.per-file-ignores]
+# `from .conftest import` is pytest's own co-location idiom -- conftest is DEFINED by
+# sitting beside its tests, so the "this breaks when the file moves" rationale above
+# does not apply. Exempted here rather than rewritten to keep pytest's collection intact.
+"tests/**" = ["TID252"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["zotero_core"]

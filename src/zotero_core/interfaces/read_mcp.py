@@ -37,13 +37,13 @@ import os
 import sqlite3
 from typing import Any
 
-from ..domain.annotation_type import ANNOTATION_TYPE_NAMES
-from ..domain.entities import to_jsonable
-from ..read.annotations import ZoteroAnnotationError
-from ..read.bridge import ZoteroBridgeError
-from ..read.service import ZoteroContext
-from .tool_spec import ToolSpec as _ToolSpec
-from .tool_spec import dispatch as _dispatch
+from zotero_core.domain.annotation_type import ANNOTATION_TYPE_NAMES
+from zotero_core.domain.entities.models import to_jsonable
+from zotero_core.infrastructure.http.bridge import ZoteroBridgeError
+from zotero_core.infrastructure.service import ZoteroContext
+from zotero_core.infrastructure.sqlite.annotations import ZoteroAnnotationError
+from zotero_core.interfaces.tool_spec import ToolSpec as _ToolSpec
+from zotero_core.interfaces.tool_spec import dispatch as _dispatch
 
 SERVER_NAME = "zotero-context"
 
@@ -546,7 +546,7 @@ async def main() -> None:
             "The MCP adapter requires the optional dependency: uv sync --extra mcp"
         ) from exc
 
-    from .. import __version__
+    from zotero_core import __version__
 
     server = Server(SERVER_NAME)
 

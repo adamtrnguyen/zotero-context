@@ -33,9 +33,9 @@ from __future__ import annotations
 import urllib.error
 import urllib.request
 
-from .errors import Reason, WriteBlocked
-from .transports.cookjohn import CookjohnClient
-from .transports.linker import LinkerClient
+from zotero_core.domain.errors import Reason, WriteBlocked
+from zotero_core.infrastructure.transports.cookjohn import CookjohnClient
+from zotero_core.infrastructure.transports.linker import LinkerClient
 
 ZOTERO_SERVER_URL = "http://127.0.0.1:23119/"
 

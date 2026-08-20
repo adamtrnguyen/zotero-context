@@ -51,7 +51,7 @@ def test_is_snapshot_is_the_question_callers_actually_ask():
 
 
 def test_the_real_opener_returns_the_type(zotero):
-    from zotero_core.read.connect import open_readonly
+    from zotero_core.infrastructure.sqlite.connect import open_readonly
 
     zotero.add("AAAA1111")
     conn, mode = open_readonly(zotero.path)

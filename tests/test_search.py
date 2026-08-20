@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from zotero_core.read.search import ZoteroSearchStore
+from zotero_core.infrastructure.sqlite.search import ZoteroSearchStore
 
 
 @pytest.fixture()

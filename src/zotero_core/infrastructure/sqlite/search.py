@@ -32,10 +32,18 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-from ..domain.annotation_type import label_for
-from ..domain.services.policy import DEFAULT_FUZZY_THRESHOLD, normalize_title, score_tokens
-from .annotations import DEFAULT_ZOTERO_DB
-from .connect import DEFAULT_BUSY_TIMEOUT_MS, USER_LIBRARY_ID, open_readonly
+from zotero_core.domain.annotation_type import label_for
+from zotero_core.domain.services.policy import (
+    DEFAULT_FUZZY_THRESHOLD,
+    normalize_title,
+    score_tokens,
+)
+from zotero_core.infrastructure.sqlite.annotations import DEFAULT_ZOTERO_DB
+from zotero_core.infrastructure.sqlite.connect import (
+    DEFAULT_BUSY_TIMEOUT_MS,
+    USER_LIBRARY_ID,
+    open_readonly,
+)
 
 FT_CACHE_NAME = ".zotero-ft-cache"
 DEFAULT_LIMIT = 25

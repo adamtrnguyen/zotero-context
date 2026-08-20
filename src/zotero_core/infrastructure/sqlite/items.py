@@ -45,9 +45,13 @@ import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
 
-from ..domain.read_mode import ReadMode
-from .annotations import DEFAULT_ZOTERO_DB
-from .connect import DEFAULT_BUSY_TIMEOUT_MS, USER_LIBRARY_ID, open_readonly
+from zotero_core.domain.read_mode import ReadMode
+from zotero_core.infrastructure.sqlite.annotations import DEFAULT_ZOTERO_DB
+from zotero_core.infrastructure.sqlite.connect import (
+    DEFAULT_BUSY_TIMEOUT_MS,
+    USER_LIBRARY_ID,
+    open_readonly,
+)
 
 
 @dataclass(frozen=True)

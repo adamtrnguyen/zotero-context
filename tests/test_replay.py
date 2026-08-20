@@ -12,8 +12,8 @@ import pathlib
 
 import pytest
 
+from zotero_core.domain.errors import WriteBlocked
 from zotero_core.write import replay as undo_mod
-from zotero_core.write.errors import WriteBlocked
 
 
 def _manifest(journal: pathlib.Path, op: str, stamp: str, inverse, before=None) -> pathlib.Path:

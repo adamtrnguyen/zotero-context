@@ -22,7 +22,7 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
-from ..domain.read_mode import ReadMode
+from zotero_core.domain.read_mode import ReadMode
 
 
 # Zotero's own user library. Group libraries get their own ids; every query in this layer

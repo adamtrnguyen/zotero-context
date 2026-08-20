@@ -34,9 +34,9 @@ from pathlib import Path
 
 import pytest
 
-from zotero_core.read.items import ZoteroItemStore
-from zotero_core.write.transports.cookjohn import CookjohnClient
-from zotero_core.write.transports.linker import LinkerClient
+from zotero_core.infrastructure.sqlite.items import ZoteroItemStore
+from zotero_core.infrastructure.transports.cookjohn import CookjohnClient
+from zotero_core.infrastructure.transports.linker import LinkerClient
 
 SCHEMA = Path(__file__).parent / "fixtures" / "schema.sql"
 
@@ -695,12 +695,13 @@ def _never_touch_the_real_zotero(monkeypatch):
     visible, deliberate edit to this file, not a keyword in a signature.
     """
     monkeypatch.setattr(
-        "zotero_core.read.items.DEFAULT_ZOTERO_DB", Path("/nonexistent/not-a-zotero.sqlite")
+        "zotero_core.infrastructure.sqlite.items.DEFAULT_ZOTERO_DB",
+        Path("/nonexistent/not-a-zotero.sqlite"),
     )
     monkeypatch.setattr(
-        "zotero_core.write.transports.linker.DEFAULT_LINKER_URL", "http://127.0.0.1:1/zotero-linker"
+        "zotero_core.infrastructure.transports.linker.DEFAULT_LINKER_URL", "http://127.0.0.1:1/zotero-linker"
     )
-    monkeypatch.setattr("zotero_core.write.transports.cookjohn.DEFAULT_COOKJOHN_URL", "http://127.0.0.1:1/mcp")
+    monkeypatch.setattr("zotero_core.infrastructure.transports.cookjohn.DEFAULT_COOKJOHN_URL", "http://127.0.0.1:1/mcp")
 
     def _refuse(*_args, **_kwargs):
         raise AssertionError("a test tried to open a real HTTP connection")
@@ -719,7 +720,7 @@ def _journal_to_tmp(monkeypatch, tmp_path):
     argument it was bound at import and this fixture would have done nothing.
     """
     monkeypatch.setattr(
-        "zotero_core.write.journal.DEFAULT_JOURNAL_DIR", str(tmp_path / "journal")
+        "zotero_core.infrastructure.journal.DEFAULT_JOURNAL_DIR", str(tmp_path / "journal")
     )
 
 

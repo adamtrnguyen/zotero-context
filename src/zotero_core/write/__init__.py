@@ -22,7 +22,7 @@ for debugging, never in a signature.
 
     create      create_item, link_attachment, import_attachment, write_note,
                 create_collection
-    read        NOT HERE -- `zotero_core.read` owns reads
+    read        NOT HERE -- `zotero_core.infrastructure` owns reads
     update      update_metadata, replace_creators, add_tags, remove_tags, set_tags,
                 write_note(action="update"|"append"), update_collection,
                 add_items_to_collection, remove_items_from_collection,
@@ -37,7 +37,7 @@ answers each rather than ignoring them:
 
   1. "core/ stays read-only forever" -- preserved exactly, as the `layers` contract
      `domain < read < write < interfaces`. The rule was about DIRECTION, and direction
-     is what a layer expresses. Nothing here is importable from `zotero_core.read`.
+     is what a layer expresses. Nothing here is importable from `zotero_core.infrastructure`.
   2. Import surface -- preserved. `zotero_core/__init__.py` exports the READ surface
      only; the two HTTP transports arrive solely via an explicit
      `from zotero_core.write import ...`. (The original form of this argument was
@@ -66,7 +66,11 @@ plugin exposes an endpoint for them. Nothing in this package can destroy an item
 strongest thing it can do is move one to the trash.
 """
 
-from .collections import (
+from zotero_core.domain.errors import ALL_REASONS, Reason, WriteBlocked
+from zotero_core.infrastructure.journal import DEFAULT_JOURNAL_DIR, copy_database, write_manifest
+from zotero_core.infrastructure.transports.cookjohn import DEFAULT_COOKJOHN_URL, CookjohnClient
+from zotero_core.infrastructure.transports.linker import DEFAULT_LINKER_URL, LinkerClient
+from zotero_core.write.collections import (
     add_items_to_collection,
     create_collection,
     delete_collection,
@@ -74,13 +78,9 @@ from .collections import (
     remove_items_from_collection,
     update_collection,
 )
-from .errors import ALL_REASONS, Reason, WriteBlocked
-from .journal import DEFAULT_JOURNAL_DIR, copy_database, write_manifest
-from .liveness import require_zotero, zotero_is_running
-from .replay import list_entries, undo
-from .transports.cookjohn import DEFAULT_COOKJOHN_URL, CookjohnClient
-from .transports.linker import DEFAULT_LINKER_URL, LinkerClient
-from .verbs import (
+from zotero_core.write.liveness import require_zotero, zotero_is_running
+from zotero_core.write.replay import list_entries, undo
+from zotero_core.write.verbs import (
     add_tags,
     check_keys,
     create_item,

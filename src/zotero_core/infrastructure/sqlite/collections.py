@@ -2,7 +2,7 @@
 
 WHY THIS DID NOT EXIST
 ----------------------
-`zotero_core.read` owned every Zotero SQL query by charter and had NO collection queries
+`zotero_core.infrastructure` owned every Zotero SQL query by charter and had NO collection queries
 at all -- `grep parentCollectionID` over the package returned nothing, and the
 `collections` table was joined in exactly one place, to turn an id into a display string
 for a PDF's attachment row.
@@ -38,9 +38,13 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from ..domain.read_mode import ReadMode
-from .annotations import DEFAULT_ZOTERO_DB
-from .connect import DEFAULT_BUSY_TIMEOUT_MS, USER_LIBRARY_ID, open_readonly
+from zotero_core.domain.read_mode import ReadMode
+from zotero_core.infrastructure.sqlite.annotations import DEFAULT_ZOTERO_DB
+from zotero_core.infrastructure.sqlite.connect import (
+    DEFAULT_BUSY_TIMEOUT_MS,
+    USER_LIBRARY_ID,
+    open_readonly,
+)
 
 # Deep enough that no real library reaches it (the deepest here is 3), shallow enough
 # that a cycle terminates. Reported rather than silently truncated -- see `truncated`.

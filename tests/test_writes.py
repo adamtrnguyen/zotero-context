@@ -21,7 +21,7 @@ from pathlib import Path
 import pytest
 
 from zotero_core.domain.read_mode import ReadMode
-from zotero_core.read.items import ZoteroItemStore
+from zotero_core.infrastructure.sqlite.items import ZoteroItemStore
 from zotero_core.write import (
     ALL_REASONS,
     CookjohnClient,
@@ -397,7 +397,7 @@ def test_a_manifest_written_with_no_journal_dir_honours_the_redirect(zotero, lin
     bound at import, the autouse redirect silently did nothing, and the suite wrote 216
     manifests into the shared `/tmp/zotero-write-journal` — polluting the audit trail for
     real writes. If this test fails, that is happening again."""
-    import zotero_core.write.journal as journal_mod
+    import zotero_core.infrastructure.journal as journal_mod
 
     zotero.add("ABCD2345", "A Paper")
     out = trash_items(["ABCD2345"], store=zotero.store(), linker=linker)
@@ -551,11 +551,11 @@ def test_the_write_modules_issue_no_sql():
     way a structural assertion becomes a prose lint. The AST only sees code."""
     import ast
 
+    import zotero_core.infrastructure.journal as journal_mod
+    import zotero_core.infrastructure.transports.cookjohn as cookjohn_mod
+    import zotero_core.infrastructure.transports.linker as linker_mod
     import zotero_core.write.collections as collections_mod
-    import zotero_core.write.journal as journal_mod
     import zotero_core.write.liveness as liveness_mod
-    import zotero_core.write.transports.cookjohn as cookjohn_mod
-    import zotero_core.write.transports.linker as linker_mod
     import zotero_core.write.verbs as writes_mod
 
     for module in (
@@ -628,7 +628,7 @@ def test_an_empty_lookup_costs_no_connection(zotero):
 def test_a_missing_database_is_an_error_not_an_empty_answer(tmp_path):
     """Silently reporting 'no items exist' for an absent database would make every
     existence gate pass vacuously."""
-    from zotero_core.read.annotations import ZoteroAnnotationError
+    from zotero_core.infrastructure.sqlite.annotations import ZoteroAnnotationError
 
     with pytest.raises(ZoteroAnnotationError):
         ZoteroItemStore(tmp_path / "absent.sqlite").item_states(["ABCD2345"])
@@ -649,8 +649,8 @@ def test_the_real_zotero_defaults_are_unreachable_from_a_test():
     """
     from pathlib import Path
 
-    from zotero_core.read import items
-    from zotero_core.write.transports import cookjohn, linker
+    from zotero_core.infrastructure.sqlite import items
+    from zotero_core.infrastructure.transports import cookjohn, linker
 
     assert not Path(items.DEFAULT_ZOTERO_DB).exists()
     assert ":1/" in linker.DEFAULT_LINKER_URL

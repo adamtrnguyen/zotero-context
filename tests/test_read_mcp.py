@@ -20,10 +20,10 @@ import sqlite3
 
 import pytest
 
+from zotero_core.infrastructure.http.bridge import ZoteroBridgeError
+from zotero_core.infrastructure.service import ZoteroContext
+from zotero_core.infrastructure.sqlite.annotations import ANNOTATION_TYPE, ZoteroAnnotationError
 from zotero_core.interfaces import read_mcp
-from zotero_core.read.annotations import ANNOTATION_TYPE, ZoteroAnnotationError
-from zotero_core.read.bridge import ZoteroBridgeError
-from zotero_core.read.service import ZoteroContext
 
 
 @pytest.fixture()
@@ -260,7 +260,7 @@ def test_annotation_reads_go_through_the_one_opener_and_record_the_mode(zotero):
     `read/__init__.py` claimed every read reports the mode that served it. Two real
     consequences: an annotation read could never be a live read even with Zotero closed,
     and a caller could not tell it had been handed a snapshot."""
-    from zotero_core.read.annotations import ZoteroAnnotationStore
+    from zotero_core.infrastructure.sqlite.annotations import ZoteroAnnotationStore
 
     store = ZoteroAnnotationStore(zotero.path)
     assert store.last_read_mode == ""
@@ -272,8 +272,8 @@ def test_the_annotation_error_name_still_resolves(zotero):
     """It moved to connect.py (it is raised for "cannot open the database", not for
     anything about annotations) and is aliased, because the old name is caught in
     several places."""
-    from zotero_core.read.annotations import ZoteroAnnotationError
-    from zotero_core.read.connect import ZoteroReadError
+    from zotero_core.infrastructure.sqlite.annotations import ZoteroAnnotationError
+    from zotero_core.infrastructure.sqlite.connect import ZoteroReadError
 
     assert ZoteroAnnotationError is ZoteroReadError
 

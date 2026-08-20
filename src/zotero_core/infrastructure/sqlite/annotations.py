@@ -3,10 +3,14 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
-from ..domain.annotation_type import ANNOTATION_TYPE as ANNOTATION_TYPE  # re-export
-from ..domain.annotation_type import label_for
-from ..domain.entities import Annotation, ZoteroSource
-from .connect import DEFAULT_BUSY_TIMEOUT_MS, ZoteroReadError, open_readonly
+from zotero_core.domain.annotation_type import ANNOTATION_TYPE as ANNOTATION_TYPE  # re-export
+from zotero_core.domain.annotation_type import label_for
+from zotero_core.domain.entities.models import Annotation, ZoteroSource
+from zotero_core.infrastructure.sqlite.connect import (
+    DEFAULT_BUSY_TIMEOUT_MS,
+    ZoteroReadError,
+    open_readonly,
+)
 
 DEFAULT_ZOTERO_DB = Path.home() / "Zotero" / "zotero.sqlite"
 
