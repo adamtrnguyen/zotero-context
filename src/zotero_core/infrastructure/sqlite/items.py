@@ -4,7 +4,7 @@ Exists to serve the WRITE gate in `../../../../writes` without putting any SQL
 there. Every precondition a write needs is a read -- does this key resolve, is it
 already in the trash, what type is it, what hangs off it -- and ZoteroSuite's rule
 is that consumers do not duplicate Zotero SQL (README, "Rules of the road"). So
-the reads live here, in the canonical read layer, and `zotero_core.write` reaches
+the reads live here, in the canonical read layer, and `zotero_core.application` reaches
 Zotero through exactly one channel: the linker plugin's HTTP endpoint.
 
 core stays READ-ONLY. Nothing here opens the database read-write.

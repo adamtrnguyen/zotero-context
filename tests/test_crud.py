@@ -20,8 +20,7 @@ from pathlib import Path
 
 import pytest
 
-from zotero_core.infrastructure.sqlite.duplicates import check_duplicate, clean_doi, clean_isbn
-from zotero_core.write import (
+from zotero_core.application import (
     Reason,
     WriteBlocked,
     add_items_to_collection,
@@ -42,6 +41,7 @@ from zotero_core.write import (
     update_metadata,
     write_note,
 )
+from zotero_core.infrastructure.sqlite.duplicates import check_duplicate, clean_doi, clean_isbn
 
 from .conftest import FakeCookjohn
 
@@ -118,7 +118,7 @@ def test_an_explicit_null_undo_call_survives_the_builder(zotero, linker, cookjoh
 
 
 def test_the_builder_refuses_an_unknown_transport():
-    from zotero_core.write.results import ok
+    from zotero_core.application.results import ok
 
     with pytest.raises(ValueError, match="unknown transport"):
         ok("x", transport="cookjhon")
@@ -325,7 +325,7 @@ def test_an_import_that_returns_no_key_is_also_a_failure(zotero, linker, tmp_pat
     `create_item` has raised for exactly this since it was written; the asymmetry was the
     bug, and an untested fix is how it would come back.
     """
-    from zotero_core.write import import_attachment
+    from zotero_core.application import import_attachment
 
     zotero.add("PARENT01", title="A Paper")
     pdf = tmp_path / "paper.pdf"
@@ -956,7 +956,7 @@ def test_creator_verification_tolerates_absent_vs_empty_name_parts(zotero, linke
 def test_creator_verification_notices_a_reordering(zotero, linker, cookjohn):
     """Order is meaning: first-author order drives duplicate detection, so the same
     creators in a different order is a real difference, not cosmetic."""
-    from zotero_core.write.verbs import _verify_creators
+    from zotero_core.application.services.verbs import _verify_creators
 
     zotero.add("ABCD2345", "A Paper")
     zotero.replace_creators(
@@ -994,7 +994,7 @@ def test_delete_verification_reports_unverified_rather_than_failed(zotero, linke
     """A "still there" read is NOT proof the delete failed -- it may be an immutable
     snapshot taken before the commit. Claiming failure would send the caller to rebuild
     a collection that is already gone, under a NEW key, re-filing every member."""
-    from zotero_core.write.collections import _verify_gone
+    from zotero_core.application.services.collections import _verify_gone
 
     key = zotero.add_collection("Still Here")
     verdict = _verify_gone(zotero.store(), key)
@@ -1017,7 +1017,7 @@ def test_update_collection_verifies_the_new_name(zotero, linker, cookjohn):
 def test_collection_verification_only_checks_what_was_set(zotero, linker, cookjohn):
     """`name=None` means "do not check the name", not "expect no name" -- checking a
     field the caller never set would invent a failure."""
-    from zotero_core.write.collections import _verify_collection
+    from zotero_core.application.services.collections import _verify_collection
 
     key = zotero.add_collection("Named")
     assert _verify_collection(zotero.store(), key)["verified"] is True
@@ -1066,7 +1066,7 @@ def test_remove_items_reports_which_were_never_there(zotero, linker, cookjohn):
 
 
 def test_membership_verification_runs_in_both_directions(zotero, linker, cookjohn):
-    from zotero_core.write.collections import _verify_membership
+    from zotero_core.application.services.collections import _verify_membership
 
     coll = zotero.add_collection("Papers")
     zotero.add("ABCD2345", "One")
@@ -1101,7 +1101,7 @@ def test_attachment_verification_flags_a_missing_file_as_unverified(zotero):
     relative to Zotero's base directory, and the honest answer for that is `unresolved`
     rather than `missing` -- see the next test.
     """
-    from zotero_core.write.verbs import _verify_attachment
+    from zotero_core.application.services.verbs import _verify_attachment
 
     zotero.add("PARENT12", "The Parent", item_type="book")
     zotero.add("ATTACH01", item_type="attachment", parent="PARENT12", title="", stored=True)
@@ -1114,7 +1114,7 @@ def test_a_relative_linked_path_is_unresolved_not_missing(zotero):
     """The distinction that keeps this honest: 772 of this library's 1368 attachments are
     LINKED, and their paths are relative to a base that lives in prefs.js, not sqlite.
     Calling those missing would flag most of the library as broken."""
-    from zotero_core.write.verbs import _verify_attachment
+    from zotero_core.application.services.verbs import _verify_attachment
 
     zotero.add("PARENT12", "The Parent", item_type="book")
     zotero.add("ATTACH01", item_type="attachment", parent="PARENT12", title="")  # linked
@@ -1124,7 +1124,7 @@ def test_a_relative_linked_path_is_unresolved_not_missing(zotero):
 
 
 def test_attachment_verification_catches_a_wrong_parent(zotero):
-    from zotero_core.write.verbs import _verify_attachment
+    from zotero_core.application.services.verbs import _verify_attachment
 
     zotero.add("PARENT12", "The Parent", item_type="book")
     zotero.add("OTHER123", "Another", item_type="book")
@@ -1149,7 +1149,7 @@ def test_an_add_tolerates_a_tag_another_plugin_wrote(zotero):
     """`/unread` lands on every item created through this package, put there by a
     reading-list plugin. Demanding an exact set would report every successful add as
     broken, so extras are reported rather than failed."""
-    from zotero_core.write.verbs import _verify_tags
+    from zotero_core.application.services.verbs import _verify_tags
 
     verdict = _verify_tags("add", was=["keep"], now=["keep", "new", "/unread"], requested=["new"])
     assert verdict["verified"] is True
@@ -1159,7 +1159,7 @@ def test_an_add_tolerates_a_tag_another_plugin_wrote(zotero):
 def test_a_set_does_NOT_tolerate_a_survivor(zotero):
     """set_tags REPLACES. An extra tag after a set means the replacement did not take --
     the opposite conclusion from the same evidence after an add."""
-    from zotero_core.write.verbs import _verify_tags
+    from zotero_core.application.services.verbs import _verify_tags
 
     verdict = _verify_tags("set", was=["old"], now=["only", "old"], requested=["only"])
     assert verdict["verified"] == "unverified"
@@ -1167,7 +1167,7 @@ def test_a_set_does_NOT_tolerate_a_survivor(zotero):
 
 
 def test_a_remove_that_left_the_tag_behind_is_unverified(zotero):
-    from zotero_core.write.verbs import _verify_tags
+    from zotero_core.application.services.verbs import _verify_tags
 
     verdict = _verify_tags("remove", was=["gone", "keep"], now=["gone", "keep"], requested=["gone"])
     assert verdict["verified"] == "unverified"

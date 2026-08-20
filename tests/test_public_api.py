@@ -45,7 +45,7 @@ PUBLISHED = (
     "clean_isbn",
     # The write surface, published 2026-08-19 -- see the note in `__init__.py`. Read-only
     # `__all__` was a leftover from the pre-merge package, and it forced the one consumer
-    # that writes to import `zotero_core.write.*` by path.
+    # that writes to import `zotero_core.application.*` by path.
     "CookjohnClient",
     "LinkerClient",
     "import_attachment",
@@ -84,10 +84,11 @@ def test_the_public_surface_is_enough_to_write():
     """`youtube2zotero/promote.py` is the consumer that WRITES.
 
     It imported `zotero_core.write.transports.cookjohn` and `zotero_core.write.verbs` by
-    path, because `__all__` published only reads -- a leftover from when `core/` was a
-    read-only package rather than a decision that survived the merge. Those two paths were
-    each about to break: `transports/` moved to `infrastructure/`, and `write/` becomes
-    `application/` next. These are the names it actually uses.
+    path -- the paths as they were then -- because `__all__` published only reads, a
+    leftover from when `core/` was a read-only package rather than a decision that survived
+    the merge. BOTH of those paths have since moved (`transports/` to `infrastructure/`,
+    `write/` to `application/`) and this consumer needed no edit for either. These are the
+    names it actually uses.
     """
     for name in ("CookjohnClient", "import_attachment", "update_metadata", "write_note"):
         assert hasattr(zotero_core, name), f"{name} left the public surface"

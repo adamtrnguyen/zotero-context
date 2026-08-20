@@ -42,11 +42,11 @@ include_external_packages = True
 # `zotero_core/__init__.py` is deliberately NOT a layer: it is the published API and
 # imports across every layer by design.
 [importlinter:contract:layers]
-name = interfaces above write above infrastructure above domain
+name = interfaces above application above infrastructure above domain
 type = layers
 layers =
     zotero_core.interfaces
-    zotero_core.write
+    zotero_core.application
     zotero_core.infrastructure
     zotero_core.domain
 
@@ -78,13 +78,13 @@ layers =
 # and `journal` are infrastructure, `errors` is domain. Contract 1 now places all
 # three below everything here, which is strictly stronger than their old rung.
 [importlinter:contract:write-spine]
-name = write layers: replay above verbs above liveness above results
+name = application layers: replay above verbs above liveness above results
 type = layers
 layers =
-    zotero_core.write.replay
-    zotero_core.write.verbs : zotero_core.write.collections
-    zotero_core.write.liveness
-    zotero_core.write.results
+    zotero_core.application.services.replay
+    zotero_core.application.services.verbs : zotero_core.application.services.collections
+    zotero_core.application.services.liveness
+    zotero_core.application.results
 
 # --------------------------------------------------------------------------
 # 3. no SQL in the write path
@@ -103,7 +103,7 @@ layers =
 name = write reaches the database only through the sqlite adapters
 type = forbidden
 source_modules =
-    zotero_core.write
+    zotero_core.application
 forbidden_modules =
     sqlite3
 allow_indirect_imports = True
@@ -132,7 +132,7 @@ allow_indirect_imports = True
 name = only interfaces may import mcp, so the rest stays stdlib-only
 type = forbidden
 source_modules =
-    zotero_core.write
+    zotero_core.application
     zotero_core.infrastructure
     zotero_core.domain
 forbidden_modules =

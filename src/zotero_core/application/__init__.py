@@ -40,7 +40,7 @@ answers each rather than ignoring them:
      is what a layer expresses. Nothing here is importable from `zotero_core.infrastructure`.
   2. Import surface -- preserved. `zotero_core/__init__.py` exports the READ surface
      only; the two HTTP transports arrive solely via an explicit
-     `from zotero_core.write import ...`. (The original form of this argument was
+     `from zotero_core.application import ...`. (The original form of this argument was
      already shaky: core's own `__init__` imported `bbt` and `bridge`, so a plain
      import dragged in `urllib` regardless.)
   3. The dependency direction is naturally acyclic -- still true, still the reason
@@ -66,11 +66,7 @@ plugin exposes an endpoint for them. Nothing in this package can destroy an item
 strongest thing it can do is move one to the trash.
 """
 
-from zotero_core.domain.errors import ALL_REASONS, Reason, WriteBlocked
-from zotero_core.infrastructure.journal import DEFAULT_JOURNAL_DIR, copy_database, write_manifest
-from zotero_core.infrastructure.transports.cookjohn import DEFAULT_COOKJOHN_URL, CookjohnClient
-from zotero_core.infrastructure.transports.linker import DEFAULT_LINKER_URL, LinkerClient
-from zotero_core.write.collections import (
+from zotero_core.application.services.collections import (
     add_items_to_collection,
     create_collection,
     delete_collection,
@@ -78,9 +74,9 @@ from zotero_core.write.collections import (
     remove_items_from_collection,
     update_collection,
 )
-from zotero_core.write.liveness import require_zotero, zotero_is_running
-from zotero_core.write.replay import list_entries, undo
-from zotero_core.write.verbs import (
+from zotero_core.application.services.liveness import require_zotero, zotero_is_running
+from zotero_core.application.services.replay import list_entries, undo
+from zotero_core.application.services.verbs import (
     add_tags,
     check_keys,
     create_item,
@@ -95,6 +91,10 @@ from zotero_core.write.verbs import (
     update_metadata,
     write_note,
 )
+from zotero_core.domain.errors import ALL_REASONS, Reason, WriteBlocked
+from zotero_core.infrastructure.journal import DEFAULT_JOURNAL_DIR, copy_database, write_manifest
+from zotero_core.infrastructure.transports.cookjohn import DEFAULT_COOKJOHN_URL, CookjohnClient
+from zotero_core.infrastructure.transports.linker import DEFAULT_LINKER_URL, LinkerClient
 
 # Grouped by CRUD concern rather than sorted -- the grouping IS the documentation of
 # what this package is for, and the whole point is that the surface reads as one

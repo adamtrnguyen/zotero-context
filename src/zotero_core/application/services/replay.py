@@ -2,7 +2,7 @@
 
 NAMED `replay`, NOT `undo`, and that is not cosmetic: `write/__init__` re-exports the
 `undo` FUNCTION, which binds that name on the package and makes a module of the same name
-permanently unreachable -- `import zotero_core.write.undo` silently hands back the
+permanently unreachable -- `import zotero_core.application.undo` silently hands back the
 function, with an AttributeError on first use. The public verb keeps the good name; the
 module takes a different one.
 
@@ -58,9 +58,9 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
+from zotero_core.application.results import ok
 from zotero_core.domain.errors import Reason, WriteBlocked
 from zotero_core.infrastructure.journal import DEFAULT_JOURNAL_DIR
-from zotero_core.write.results import ok
 
 PLACEHOLDER_MARKERS = ("<", ">")
 
@@ -98,9 +98,9 @@ class Entry:
 
 def _replayable_verbs() -> dict[str, Callable[..., dict]]:
     """The whitelist. Imported lazily so this module stays importable without a live
-    Zotero, and so `write/__init__` can export `undo` without a circular import."""
-    from zotero_core.write import collections as coll
-    from zotero_core.write import verbs
+    Zotero, and so `application/__init__` can export `undo` without a circular import."""
+    from zotero_core.application.services import collections as coll
+    from zotero_core.application.services import verbs
 
     return {
         "add_items_to_collection": coll.add_items_to_collection,

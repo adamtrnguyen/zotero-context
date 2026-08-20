@@ -21,14 +21,14 @@ member key, which together are enough to rebuild it by hand.
 
 from __future__ import annotations
 
+from zotero_core.application.results import ok
+from zotero_core.application.services.liveness import require_zotero
 from zotero_core.domain.errors import Reason, WriteBlocked
 from zotero_core.domain.services.identity import is_key
 from zotero_core.infrastructure.journal import write_manifest
 from zotero_core.infrastructure.sqlite.items import ZoteroItemStore
 from zotero_core.infrastructure.transports.cookjohn import CookjohnClient, find_key
 from zotero_core.infrastructure.transports.linker import LinkerClient
-from zotero_core.write.liveness import require_zotero
-from zotero_core.write.results import ok
 
 
 def _session(linker, cookjohn, store):
@@ -435,7 +435,7 @@ def add_items_to_collection(
     store=None,
 ) -> dict:
     """File items into a collection. No manifest — the inverse is a removal."""
-    from zotero_core.write.verbs import check_keys, require_items
+    from zotero_core.application.services.verbs import check_keys, require_items
 
     linker, cookjohn, store = _session(linker, cookjohn, store)
     _check_collection_key(collection_key)
@@ -477,7 +477,7 @@ def remove_items_from_collection(
     this and `trash_items` is exactly the one a caller in a hurry gets wrong. Nothing
     here deletes an item.
     """
-    from zotero_core.write.verbs import check_keys, require_items
+    from zotero_core.application.services.verbs import check_keys, require_items
 
     linker, cookjohn, store = _session(linker, cookjohn, store)
     _check_collection_key(collection_key)
@@ -550,8 +550,8 @@ def move_items_between_collections(
     `force`, in which case it files them into the target and says which were not in the
     source.
     """
+    from zotero_core.application.services.verbs import check_keys, require_items
     from zotero_core.infrastructure.sqlite.collections import ZoteroCollectionStore
-    from zotero_core.write.verbs import check_keys, require_items
 
     linker, cookjohn, store = _session(linker, cookjohn, store)
     _check_collection_key(from_collection_key)

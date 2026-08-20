@@ -38,8 +38,7 @@ from pathlib import Path
 
 import pytest
 
-from zotero_core.interfaces import write_mcp as adapter
-from zotero_core.write import (
+from zotero_core.application import (
     ALL_REASONS,
     WriteBlocked,
     add_items_to_collection,
@@ -59,6 +58,7 @@ from zotero_core.write import (
     update_metadata,
     write_note,
 )
+from zotero_core.interfaces import write_mcp as adapter
 
 # The package's whole public write surface, as `__init__.__all__` groups it. A verb
 # added to the package and not exposed here fails `test_every_public_write_verb_...`.
@@ -83,8 +83,8 @@ def wired(zotero, linker, cookjohn, monkeypatch, tmp_path):
     """
     monkeypatch.setattr("zotero_core.infrastructure.sqlite.items.DEFAULT_ZOTERO_DB", zotero.path)
     for module in (
-        "zotero_core.write.verbs",
-        "zotero_core.write.collections",
+        "zotero_core.application.services.verbs",
+        "zotero_core.application.services.collections",
         "zotero_core.interfaces.write_mcp",
     ):
         monkeypatch.setattr(f"{module}.LinkerClient", lambda *_a, **_k: linker, raising=False)
@@ -373,7 +373,7 @@ def test_mcp_is_imported_inside_a_function_never_at_module_level():
     """`cookjohn.py` is stdlib-only so it can be VENDORED into `calibre-zotero-jump`, a
     Calibre plugin running inside Calibre's embedded Python which cannot see a uv
     virtualenv. A module-level `import mcp` here would put an async runtime in that
-    import path — and would make every consumer of `zotero_core.write` need the extra.
+    import path — and would make every consumer of `zotero_core.application` need the extra.
 
     Checked against the source rather than `sys.modules`, which another test may have
     populated. `.importlinter` enforces the same rule from the other direction."""

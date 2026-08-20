@@ -124,3 +124,33 @@ def copy_database(dest_dir: str | None, db_path) -> dict:
         out["journal"] = jdest
         out["bytes"] += os.path.getsize(jdest)
     return out
+
+
+class FileJournal:
+    """The filesystem implementation of `domain.ports.journal.Journal`.
+
+    An OBJECT wrapping the two functions above, because a port needs something to inject
+    and a module is not injectable. The functions stay module-level: they are still the
+    implementation, still importable, and still what the tests exercise directly. This
+    class only gives the application layer something to hold that is not an import.
+
+    Satisfies the port STRUCTURALLY -- it does not import it. That is what keeps the
+    dependency pointing one way: the port describes the need, and infrastructure happens
+    to meet it without ever naming it.
+    """
+
+    def __init__(self, default_dir: str = DEFAULT_JOURNAL_DIR):
+        self.default_dir = default_dir
+
+    def write_manifest(
+        self,
+        op: str,
+        *,
+        before: dict,
+        inverse: str | None = None,
+        journal_dir: str | None = None,
+    ) -> str:
+        return write_manifest(op, before=before, inverse=inverse, journal_dir=journal_dir)
+
+    def copy_database(self, dest_dir: str | None, db_path) -> dict:
+        return copy_database(dest_dir, db_path)

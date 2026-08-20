@@ -1,4 +1,4 @@
-"""MCP adapter over the gated write surface: the agent-facing half of `zotero_core.write`.
+"""MCP adapter over the gated write surface: the agent-facing half of `zotero_core.application`.
 
 WHY THIS EXISTS, GIVEN THAT COOKJOHN ALREADY SPEAKS MCP
 ------------------------------------------------------
@@ -69,14 +69,7 @@ import json
 from typing import Any
 
 from zotero_core import __version__
-from zotero_core.domain.entities.models import to_jsonable
-from zotero_core.domain.errors import WriteBlocked
-from zotero_core.infrastructure.sqlite.items import ZoteroItemStore
-from zotero_core.infrastructure.transports.cookjohn import CookjohnClient
-from zotero_core.infrastructure.transports.linker import LinkerClient
-from zotero_core.interfaces.tool_spec import WriteToolSpec as _ToolSpec
-from zotero_core.interfaces.tool_spec import dispatch as _dispatch
-from zotero_core.write.collections import (
+from zotero_core.application.services.collections import (
     add_items_to_collection,
     create_collection,
     delete_collection,
@@ -84,10 +77,10 @@ from zotero_core.write.collections import (
     remove_items_from_collection,
     update_collection,
 )
-from zotero_core.write.liveness import ZOTERO_SERVER_URL, zotero_is_running
-from zotero_core.write.replay import list_entries as _list_entries
-from zotero_core.write.replay import undo as _undo
-from zotero_core.write.verbs import (
+from zotero_core.application.services.liveness import ZOTERO_SERVER_URL, zotero_is_running
+from zotero_core.application.services.replay import list_entries as _list_entries
+from zotero_core.application.services.replay import undo as _undo
+from zotero_core.application.services.verbs import (
     add_tags,
     check_keys,
     create_item,
@@ -102,6 +95,13 @@ from zotero_core.write.verbs import (
     update_metadata,
     write_note,
 )
+from zotero_core.domain.entities.models import to_jsonable
+from zotero_core.domain.errors import WriteBlocked
+from zotero_core.infrastructure.sqlite.items import ZoteroItemStore
+from zotero_core.infrastructure.transports.cookjohn import CookjohnClient
+from zotero_core.infrastructure.transports.linker import LinkerClient
+from zotero_core.interfaces.tool_spec import WriteToolSpec as _ToolSpec
+from zotero_core.interfaces.tool_spec import dispatch as _dispatch
 
 SERVER_NAME = "zotero-writes"
 

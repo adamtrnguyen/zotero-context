@@ -31,7 +31,7 @@ WHAT THIS MODULE EXPORTS
 The READ surface only. `import zotero_core` must stay cheap and side-effect free:
 the write verbs reach two HTTP transports and are an explicit opt-in --
 
-    from zotero_core.write import create_item, trash_items
+    from zotero_core.application import create_item, trash_items
 
 which also keeps the CRUD surface a deliberate act rather than something a caller
 gets by accident.
@@ -68,7 +68,7 @@ __version__ = "0.2.0"
 
 # The three WRITE VERBS are published LAZILY, and the reason is a real contract failure
 # rather than a preference. Importing `zotero_core.anything` executes THIS file first
-# (Python imports ancestor packages), so a module-level `from zotero_core.write.verbs
+# (Python imports ancestor packages), so a module-level `from zotero_core.application.services.verbs
 # import ...` here makes every layer -- including `domain` -- depend on `write`. That is
 # precisely what `interfaces above write above infrastructure above domain` forbids, and
 # import-linter caught it: `infrastructure.service -> zotero_core -> write.verbs`.
@@ -87,7 +87,7 @@ def __getattr__(name: str):
     if name in _LAZY_WRITE_VERBS:
         import importlib
 
-        value = getattr(importlib.import_module("zotero_core.write.verbs"), name)
+        value = getattr(importlib.import_module("zotero_core.application.services.verbs"), name)
         globals()[name] = value  # cached: __getattr__ is not consulted again
         return value
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
@@ -96,11 +96,12 @@ __all__ = [
     # ⚠ THE WRITE SURFACE IS PUBLISHED TOO, as of 2026-08-19. This list was read-only for
     # as long as `core/` was a read-only package, and the merge made that a leftover rather
     # than a rule: `youtube2zotero/promote.py` needs writes, so it imported
-    # `zotero_core.write.transports.cookjohn` and `zotero_core.write.verbs` directly. That
-    # is the same reach-past-the-surface that broke `arxiv-bulk`, and it was about to break
-    # twice more -- once when `transports/` moved to `infrastructure/`, and again when
-    # `write/` becomes `application/`. Publishing the four names it actually uses makes both
-    # moves invisible to it. Publishing is the CHEAP half of the deal; the surface is frozen
+    # `zotero_core.write.transports.cookjohn` and `zotero_core.write.verbs` directly -- the
+    # paths as they were THEN, both of which have since moved (`transports/` to
+    # `infrastructure/`, `write/` to `application/`). That is the same reach-past-the-surface
+    # that broke `arxiv-bulk`, and publishing the names it actually uses made both moves
+    # invisible to it -- which is exactly what happened, twice, with no edit on its side.
+    # Publishing is the CHEAP half of the deal; the surface is frozen
     # by `tests/test_public_api.py`, so adding a name here is a deliberate commitment.
     # Defaults consumers actually need. Added 2026-08-19 because `arxiv-bulk` was importing
     # them from `read.annotations` / `read.bbt` directly -- reaching past the public surface

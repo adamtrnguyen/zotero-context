@@ -20,9 +20,7 @@ from pathlib import Path
 
 import pytest
 
-from zotero_core.domain.read_mode import ReadMode
-from zotero_core.infrastructure.sqlite.items import ZoteroItemStore
-from zotero_core.write import (
+from zotero_core.application import (
     ALL_REASONS,
     CookjohnClient,
     LinkerClient,
@@ -33,6 +31,8 @@ from zotero_core.write import (
     restore_items,
     trash_items,
 )
+from zotero_core.domain.read_mode import ReadMode
+from zotero_core.infrastructure.sqlite.items import ZoteroItemStore
 
 from .conftest import PING, FakeLinker
 
@@ -528,9 +528,9 @@ def test_no_verb_can_erase_an_item(zotero, linker):
 
     `delete_collection` is the one verb whose NAME says delete, and it deletes a
     folder, not its contents — which is exactly why the name alone is not the check."""
-    import zotero_core.write
+    import zotero_core.application
 
-    surface = " ".join(dir(zotero_core.write)).lower()
+    surface = " ".join(dir(zotero_core.application)).lower()
     for forbidden in ("erase", "empty_trash", "emptytrash", "purge", "destroy", "delete_item"):
         assert forbidden not in surface, f"public surface exposes {forbidden!r}"
 
@@ -551,12 +551,12 @@ def test_the_write_modules_issue_no_sql():
     way a structural assertion becomes a prose lint. The AST only sees code."""
     import ast
 
+    import zotero_core.application.services.collections as collections_mod
+    import zotero_core.application.services.liveness as liveness_mod
+    import zotero_core.application.services.verbs as writes_mod
     import zotero_core.infrastructure.journal as journal_mod
     import zotero_core.infrastructure.transports.cookjohn as cookjohn_mod
     import zotero_core.infrastructure.transports.linker as linker_mod
-    import zotero_core.write.collections as collections_mod
-    import zotero_core.write.liveness as liveness_mod
-    import zotero_core.write.verbs as writes_mod
 
     for module in (
         writes_mod, collections_mod, linker_mod, cookjohn_mod, liveness_mod, journal_mod

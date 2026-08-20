@@ -1,7 +1,7 @@
 """PARITY WITH COOKJOHN -- the gate for unregistering its MCP server.
 
 cookjohn's `zotero-plugin` MCP exposes 24 tools to an agent. Nine of them are WRITES that
-duplicate the gated ones in `zotero_core.write`, with no precondition, no journal and no
+duplicate the gated ones in `zotero_core.application`, with no precondition, no journal and no
 read-back; those are the ones this suite exists to replace. The other fifteen are READS,
 and for a long time they were the ONLY answer to "what is in collection X", "what type is
 this item" and "search my library" -- which is why the server stayed registered long after
@@ -12,7 +12,7 @@ explicit list of things deliberately not carried over. It exists so that unregis
 cookjohn is a checked step rather than a hopeful one: without it, the read gap reappears
 silently and nobody notices until an agent cannot answer a question it used to answer.
 
-⚠ The plugin is NOT uninstalled by any of this. `zotero_core.write` uses it as a write
+⚠ The plugin is NOT uninstalled by any of this. `zotero_core.application` uses it as a write
 TRANSPORT over :23121, and `importers/calibre2zotero` and `calibre-zotero-jump` open
 their own connections to the same port. Unregistering removes 24 tools from an agent's
 tool list; it changes nothing about the transport.
@@ -52,7 +52,7 @@ DELIBERATELY_DROPPED = {
     ),
 }
 
-# cookjohn's writes. All nine are superseded by GATED equivalents in zotero_core.write,
+# cookjohn's writes. All nine are superseded by GATED equivalents in zotero_core.application,
 # which additionally has trash/restore and linked attachments -- cookjohn exposes no
 # equivalent for those at all.
 COOKJOHN_WRITES = {
