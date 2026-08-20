@@ -32,7 +32,7 @@ caller had to know which served which verb:
 |---|---|---|
 | create / update / notes / tags / collections | cookjohn `zotero-mcp-plugin` | 23121 (MCP JSON-RPC) |
 | linked attachments / trash / restore | `zotero-linker` | 23119 (plain HTTP) |
-| reads | `zotero_core.read` → `zotero.sqlite` | — |
+| reads | `zotero_core.infrastructure` → `zotero.sqlite` | — |
 
 Two consumers learned that split by copying a client. `importers/calibre2zotero/
 sync.py:139` and `calibre-zotero-jump/ui.py:24` carry near-identical MCP clients,
@@ -48,7 +48,7 @@ scattered places instead of three.
 ## Where it lives, and what `core/` is
 
 **`core/` is not the single Zotero owner. It is the read half; this is the write
-half.** The dependency runs `zotero_core.write` → `zotero_core.read`, never the reverse,
+half.** The dependency runs `zotero_core.write` → `zotero_core.infrastructure`, never the reverse,
 and `core/`'s "read-only forever" contract is **unamended**.
 
 The alternative was amending that contract so one package owned everything, with
@@ -56,7 +56,7 @@ calibre-core as precedent — its docstring says an earlier version "over-read i
 reason: the argument is against raw SQL, not against owning the gate." Sound there,
 and it does not transfer, for three reasons spelled out in
 `src/zotero_core/write/__init__.py`: ZoteroSuite never conflated the two rules (they are
-separate README bullets, so there is no tangle to undo); `zotero_core.read` has
+separate README bullets, so there is no tangle to undo); `zotero_core.infrastructure` has
 `dependencies = []` and feeds an Obsidian JSON CLI, while a CRUD surface needs two
 HTTP clients; and every write precondition is a read, so the direction is naturally
 acyclic.
@@ -71,7 +71,7 @@ cannot create at all.
 | | verbs | transport |
 |---|---|---|
 | **create** | `create_item`, `link_attachment`, `import_attachment`, `write_note`, `create_collection` | cookjohn + linker |
-| **read** | *not here* — `zotero_core.read` owns reads and is already correct | core |
+| **read** | *not here* — `zotero_core.infrastructure` owns reads and is already correct | core |
 | **update** | `update_metadata`, `add_tags`, `remove_tags`, `set_tags`, `replace_creators`, `write_note(action=…)`, `update_collection`, `add_items_to_collection`, `remove_items_from_collection` | cookjohn |
 | **delete** | `trash_items` / `restore_items`, `delete_collection` | linker + cookjohn |
 
@@ -99,7 +99,7 @@ which speaks plain HTTP — so removing an item meant driving `uv run python` on
 
 Three things it deliberately does not expose:
 
-- **reads** — `zotero_core.read` owns them and the `zotero-core` server already
+- **reads** — `zotero_core.infrastructure` owns them and the `zotero-core` server already
   serves them. A second answer to "what is in the library" is the failure this
   package exists to end.
 - **`store` / `linker` / `cookjohn`** — injection seams. As tool parameters they would

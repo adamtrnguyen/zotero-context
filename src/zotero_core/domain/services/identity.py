@@ -37,10 +37,25 @@ the existence gate, which is the check that actually protects the caller.
 (That paragraph existed in exactly one of the five copies. It is the spec, so it travels
 with the rule.)
 
-⚠ `write/transports/cookjohn.py` KEEPS ITS OWN COPY, on purpose. It is vendored verbatim
-into `calibre-zotero-jump`, which runs inside Calibre's embedded Python and cannot see a
-uv virtualenv, so it must stay import-standalone. A test asserts the two patterns are
-identical -- drift detection without coupling.
+⚠ THERE IS NO LONGER A SIXTH COPY. This paragraph used to read: "`write/transports/
+cookjohn.py` KEEPS ITS OWN COPY, on purpose. It is vendored verbatim into
+`calibre-zotero-jump`... so it must stay import-standalone. A test asserts the two
+patterns are identical -- drift detection without coupling."
+
+Both premises were false, checked 2026-08-19:
+
+  * `calibre-zotero-jump` does not vendor that file. `build.sh` zips `__init__.py`,
+    `ui.py` and the import-name marker; `ui.py` contains "cookjohn" zero times and
+    reimplements the JSON-RPC client, carrying its own `\b([A-Z0-9]{8})\b`. The plugin
+    truly cannot import this package -- Calibre's embedded Python cannot see a uv
+    virtualenv -- but it copies the IDEA, not the file, so its copy is unreachable from
+    here and no test ever checked it.
+  * `cookjohn.py` was never import-standalone: it imports `zotero_core.domain.errors` at
+    module scope.
+
+The transport now calls `is_key` / `find_embedded_key` from here, and the old drift test
+became an absence check. Copies inside this package are down from five to zero; the
+plugin's copy is outside it and always was.
 """
 
 from __future__ import annotations

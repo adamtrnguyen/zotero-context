@@ -19,9 +19,9 @@ signal for choosing a library, not a catalogue figure.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from pathlib import Path
 
+from zotero_core.domain.entities.models import Library
 from zotero_core.infrastructure.sqlite.annotations import DEFAULT_ZOTERO_DB
 from zotero_core.infrastructure.sqlite.connect import DEFAULT_BUSY_TIMEOUT_MS, open_readonly
 
@@ -40,14 +40,6 @@ SELECT l.libraryID,
 """
 
 
-@dataclass(frozen=True)
-class Library:
-    library_id: int
-    library_type: str
-    name: str
-    editable: bool
-    item_count: int
-    collection_count: int
 
 
 def list_libraries(

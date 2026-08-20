@@ -29,10 +29,10 @@ THREE SEARCHES, THREE DIFFERENT SHAPES
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
 from pathlib import Path
 
 from zotero_core.domain.annotation_type import label_for
+from zotero_core.domain.entities.models import AnnotationHit, FulltextHit, ItemHit
 from zotero_core.domain.services.policy import (
     DEFAULT_FUZZY_THRESHOLD,
     normalize_title,
@@ -50,36 +50,10 @@ DEFAULT_LIMIT = 25
 DEFAULT_CONTEXT_CHARS = 160
 
 
-@dataclass(frozen=True)
-class ItemHit:
-    item_key: str
-    title: str
-    item_type: str
-    creators: str
-    score: float
-    matched_on: str
 
 
-@dataclass(frozen=True)
-class AnnotationHit:
-    annotation_key: str
-    attachment_key: str
-    parent_key: str
-    parent_title: str
-    annotation_type: str
-    text: str
-    comment: str
-    color: str
-    page_label: str
 
 
-@dataclass(frozen=True)
-class FulltextHit:
-    attachment_key: str
-    parent_key: str
-    title: str
-    snippets: tuple[str, ...]
-    match_count: int
 
 
 _ITEMS_SQL = """

@@ -46,10 +46,19 @@ in its own docstring as *"a degraded copy of calibre-core's"*) to live in.
 uv sync --all-extras          # `mcp` extra: needed only by the two adapters
 ```
 
-Zero runtime dependencies. The read layer is stdlib `sqlite3`; both write transports are
-stdlib `urllib` + `json`. That is load-bearing, not incidental —
-`calibre-zotero-jump/ui.py` runs inside Calibre's embedded Python, which cannot see a uv
-virtualenv, and vendors `write/transports/cookjohn.py` verbatim.
+Zero runtime dependencies. The sqlite adapters are stdlib `sqlite3`; both write transports
+are stdlib `urllib` + `json`. That is load-bearing, not incidental: `omni-rag` imports the
+read path inside its ARC entrypoints, where an async runtime pulled in by a tag verb is a
+real cost.
+
+⚠ **This paragraph used to say `calibre-zotero-jump/ui.py` "vendors
+`infrastructure/transports/cookjohn.py` verbatim". It does not** — checked 2026-08-19. Its
+`build.sh` zips exactly `__init__.py`, `ui.py` and the import-name marker, and `ui.py`
+contains the string `cookjohn` zero times: it is an INDEPENDENT REIMPLEMENTATION with its
+own `_rpc` and its own `\b([A-Z0-9]{8})\b`. The plugin genuinely cannot import this
+package — Calibre's embedded Python cannot see a uv virtualenv — but it copies the *idea*,
+not the file, so nothing here constrains that copy. `dependencies = []` is the reason the
+stdlib-only rule survives; vendoring never was.
 
 ## Read
 
@@ -136,7 +145,7 @@ Point either adapter somewhere else with `ZOTERO_CORE_DB`, `ZOTERO_CORE_BRIDGE_U
 `ZOTERO_CORE_BBT_URL` — MCP used to hard-wire `~/Zotero/zotero.sqlite` while the CLI had
 `--db`, so it could not be run against a copy or a fixture.
 
-**Search** (`read/search.py`) is **fuzzy by default**, which nothing in the stack had.
+**Search** (`infrastructure/sqlite/search.py`) is **fuzzy by default**, which nothing in the stack had.
 Zotero's own search is substring-only: `Langevan Dynmaics` returns **zero** results there
 and scores **0.875** here against the paper it means. Scoring is token-wise — a
 whole-string ratio gives 0.395 on that pair, because the candidate title is three times
@@ -148,7 +157,7 @@ counts, so it narrows candidates, and only the survivors' `.zotero-ft-cache` fil
 opened for the phrase and its context. A query touches a handful of files rather than
 587 MB.
 
-**Collections** (`read/collections.py`) landed 2026-08-19 — the tree with breadcrumb
+**Collections** (`infrastructure/sqlite/collections.py`) landed 2026-08-19 — the tree with breadcrumb
 paths, membership, and the inverse (which collections an item is in) that nothing
 answered before, in this package or in cookjohn. Two properties worth knowing: item
 counts EXCLUDE trashed items so they match the GUI, and everything is scoped to the user

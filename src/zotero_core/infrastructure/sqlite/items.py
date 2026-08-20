@@ -42,9 +42,14 @@ group libraries as well.
 from __future__ import annotations
 
 import sqlite3
-from dataclasses import dataclass
 from pathlib import Path
 
+from zotero_core.domain.entities.models import (
+    ItemState,
+    ItemStates,
+    ZoteroAttachment,
+    ZoteroAttachments,
+)
 from zotero_core.domain.read_mode import ReadMode
 from zotero_core.infrastructure.sqlite.annotations import DEFAULT_ZOTERO_DB
 from zotero_core.infrastructure.sqlite.connect import (
@@ -52,78 +57,6 @@ from zotero_core.infrastructure.sqlite.connect import (
     USER_LIBRARY_ID,
     open_readonly,
 )
-
-
-@dataclass(frozen=True)
-class ItemState:
-    """One item as the write gate needs to see it."""
-
-    key: str
-    exists: bool
-    trashed: bool
-    item_type: str = ""
-    title: str = ""
-    parent_key: str | None = None
-    child_keys: tuple[str, ...] = ()
-    # Trashing does not change collection membership, so this is recorded before a
-    # write purely so a restore can be checked against it rather than assumed.
-    collection_count: int = 0
-
-
-@dataclass(frozen=True)
-class ItemStates:
-    """A batch of lookups, plus which read mode produced them."""
-
-    states: dict[str, ItemState]
-    read_mode: ReadMode
-
-    def __getitem__(self, key: str) -> ItemState:
-        return self.states[key]
-
-    def get(self, key: str) -> ItemState | None:
-        return self.states.get(key)
-
-    @property
-    def missing(self) -> tuple[str, ...]:
-        return tuple(k for k, s in self.states.items() if not s.exists)
-
-    @property
-    def trashed(self) -> tuple[str, ...]:
-        return tuple(k for k, s in self.states.items() if s.exists and s.trashed)
-
-    @property
-    def live(self) -> tuple[str, ...]:
-        return tuple(k for k, s in self.states.items() if s.exists and not s.trashed)
-
-
-@dataclass(frozen=True)
-class ZoteroAttachment:
-    """One stored PDF attachment, as a corpus builder needs to see it."""
-
-    attachment_key: str  # == the storage folder name == the `zotero://open-pdf` deep-link key
-    path: Path
-    title: str  # the PARENT item's title, else the file's stem
-    collection: str | None  # first collection the parent is filed under; None = filed nowhere
-
-
-@dataclass(frozen=True)
-class ZoteroAttachments:
-    """An enumeration, plus which read mode produced it.
-
-    `read_mode` travels for the same reason it does on `ItemStates`, and it matters MORE here: an
-    `immutable=1` snapshot can be missing a paper added seconds ago, so a caller comparing this
-    against its own index would see a phantom deletion. A short enumeration is a stale read, not an
-    emptied library.
-    """
-
-    items: tuple[ZoteroAttachment, ...]
-    read_mode: ReadMode
-
-    def __len__(self) -> int:
-        return len(self.items)
-
-    def __iter__(self):
-        return iter(self.items)
 
 
 class ZoteroItemStore:

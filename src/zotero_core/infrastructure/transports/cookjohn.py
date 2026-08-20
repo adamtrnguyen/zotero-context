@@ -39,11 +39,11 @@ would put an async client in the import path of a Calibre plugin that cannot use
 from __future__ import annotations
 
 import json
-import re
 import urllib.error
 import urllib.request
 
 from zotero_core.domain.errors import Reason, WriteBlocked
+from zotero_core.domain.services.identity import find_embedded_key, is_key
 
 DEFAULT_COOKJOHN_URL = "http://127.0.0.1:23121/mcp"
 
@@ -160,13 +160,20 @@ class CookjohnClient:
             return text
 
 
-# ⚠ A DELIBERATE SECOND COPY of `domain.services.identity.KEY_PATTERN`, not an oversight.
-# This module is vendored VERBATIM into `calibre-zotero-jump`, which runs inside Calibre's
-# embedded Python and cannot see a uv virtualenv -- so it must stay import-standalone.
-# `tests/test_identity.py` asserts the two patterns are byte-identical: drift detection
-# without coupling.
-_KEY_RE = re.compile(r"^[A-Z0-9]{8}$")
-_EMBEDDED_KEY_RE = re.compile(r"\b([A-Z0-9]{8})\b")
+# ⚠ THE PRIVATE KEY REGEX THAT USED TO SIT HERE IS GONE, and the comment justifying it
+# was wrong twice over. It read: "a DELIBERATE SECOND COPY... this module is vendored
+# VERBATIM into `calibre-zotero-jump`... so it must stay import-standalone."
+#
+#   1. `calibre-zotero-jump` does not vendor this file. Checked 2026-08-19: its
+#      `build.sh` zips `__init__.py`, `ui.py` and the import-name marker, and `ui.py`
+#      contains "cookjohn" zero times. It reimplements the JSON-RPC client and carries
+#      its own `\b([A-Z0-9]{8})\b` -- a copy this package cannot reach or check.
+#   2. This module was never import-standalone anyway: it imports
+#      `zotero_core.domain.errors` at the top of the file, and has for as long as the
+#      error vocabulary has existed.
+#
+# So the copy bought nothing and cost a drift test. The rule now comes from the one
+# place that owns it, which is what `domain/services/identity.py` was created for.
 
 # Field names cookjohn uses for the key of a thing it just created, most specific
 # first. `write_item` answers with a nested `data.itemKey`; `create_collection` with a
@@ -198,7 +205,7 @@ def _keyed(payload, field: str) -> str | None:
     """Search the tree for one named field holding a key-shaped string."""
     if isinstance(payload, dict):
         value = payload.get(field)
-        if isinstance(value, str) and _KEY_RE.match(value):
+        if isinstance(value, str) and is_key(value):
             return value
         for value in payload.values():
             found = _keyed(value, field)
@@ -215,8 +222,7 @@ def _keyed(payload, field: str) -> str | None:
 def _any_key(payload) -> str | None:
     """Last resort: the first key-shaped token anywhere, including inside prose."""
     if isinstance(payload, str):
-        match = _EMBEDDED_KEY_RE.search(payload)
-        return match.group(1) if match else None
+        return find_embedded_key(payload)
     if isinstance(payload, dict):
         payload = list(payload.values())
     if isinstance(payload, list):

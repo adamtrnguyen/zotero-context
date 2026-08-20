@@ -35,10 +35,14 @@ TWO THINGS THAT BITE
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from pathlib import Path
 
-from zotero_core.domain.read_mode import ReadMode
+from zotero_core.domain.entities.models import (
+    CollectionMember,
+    CollectionMembers,
+    CollectionNode,
+    CollectionTree,
+)
 from zotero_core.infrastructure.sqlite.annotations import DEFAULT_ZOTERO_DB
 from zotero_core.infrastructure.sqlite.connect import (
     DEFAULT_BUSY_TIMEOUT_MS,
@@ -53,53 +57,12 @@ MAX_DEPTH = 32
 PATH_SEPARATOR = " > "
 
 
-@dataclass(frozen=True)
-class CollectionNode:
-    """One collection. `path` is the breadcrumb, which is what makes a tree readable."""
-
-    key: str
-    name: str
-    path: str
-    depth: int
-    parent_key: str | None
-    item_count: int
-    subcollections: tuple[CollectionNode, ...] = field(default_factory=tuple)
 
 
-@dataclass(frozen=True)
-class CollectionTree:
-    roots: tuple[CollectionNode, ...]
-    read_mode: ReadMode
-    truncated: bool = False
-
-    def flat(self) -> tuple[CollectionNode, ...]:
-        out: list[CollectionNode] = []
-
-        def walk(nodes: tuple[CollectionNode, ...]) -> None:
-            for node in nodes:
-                out.append(node)
-                walk(node.subcollections)
-
-        walk(self.roots)
-        return tuple(out)
 
 
-@dataclass(frozen=True)
-class CollectionMember:
-    item_key: str
-    title: str
-    item_type: str
-    trashed: bool
 
 
-@dataclass(frozen=True)
-class CollectionMembers:
-    collection_key: str
-    members: tuple[CollectionMember, ...]
-    read_mode: ReadMode
-
-    def __len__(self) -> int:
-        return len(self.members)
 
 
 _TREE_SQL = f"""
