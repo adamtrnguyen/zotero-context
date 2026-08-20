@@ -65,7 +65,7 @@ from zotero_core.infrastructure.sqlite.items import (
 from zotero_core.infrastructure.transports.cookjohn import CookjohnClient
 from zotero_core.infrastructure.transports.linker import LinkerClient
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 
 # The three WRITE VERBS are published LAZILY, and the reason is a real contract failure
 # rather than a preference. Importing `zotero_core.anything` executes THIS file first

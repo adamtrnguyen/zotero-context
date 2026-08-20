@@ -1,6 +1,6 @@
 [project]
 name = "zotero-core"
-version = "0.3.0"
+version = "0.4.0"
 description = "The one place that knows what a local Zotero library is: gated CRUD over a read layer that owns every Zotero SQL query."
 requires-python = ">=3.10"
 # Still zero. The sqlite adapters are stdlib sqlite3; both write transports are stdlib
