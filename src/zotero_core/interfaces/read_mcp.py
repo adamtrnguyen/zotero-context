@@ -35,8 +35,6 @@ import asyncio
 import json
 import os
 import sqlite3
-from collections.abc import Callable
-from dataclasses import dataclass, field
 from typing import Any
 
 from ..domain.annotation_type import ANNOTATION_TYPE_NAMES
@@ -44,6 +42,8 @@ from ..domain.entities import to_jsonable
 from ..read.annotations import ZoteroAnnotationError
 from ..read.bridge import ZoteroBridgeError
 from ..read.service import ZoteroContext
+from .tool_spec import ToolSpec as _ToolSpec
+from .tool_spec import dispatch as _dispatch
 
 SERVER_NAME = "zotero-context"
 
@@ -225,28 +225,6 @@ def search_zotero_fulltext(query: str, limit: int = 25) -> dict:
 
 def get_zotero_attachment_text(attachment_key: str, max_chars: int = 20000) -> dict:
     return context().attachment_text(attachment_key, max_chars=max_chars)
-
-
-@dataclass(frozen=True)
-class _ToolSpec:
-    """One tool: its name, the verb it calls, and the arguments it accepts.
-
-    `verb` is the real function above, not a wrapper, and every argument is passed by
-    KEYWORD -- so there is no per-verb adapter that can drift from the schema.
-    """
-
-    name: str
-    verb: Callable[..., Any]
-    description: str
-    properties: dict[str, dict] = field(default_factory=dict)
-    required: tuple[str, ...] = ()
-
-    def as_tool_schema(self) -> dict:
-        return {
-            "type": "object",
-            "properties": dict(self.properties),
-            "required": list(self.required),
-        }
 
 
 _ANNOTATION_TYPES_PROP = {
@@ -536,24 +514,8 @@ def error_code(exc: BaseException) -> str:
 
 
 def call_read(name: str, arguments: dict[str, Any]) -> Any:
-    """Dispatch one tool call to its verb. Raises rather than returning an envelope."""
-    spec = _BY_NAME.get(name)
-    if spec is None:
-        raise ValueError(f"Unknown tool: {name}")
-
-    unknown = sorted(set(arguments) - set(spec.properties))
-    if unknown:
-        # Refused, not dropped. A misspelled `include_annotaions` previously vanished
-        # and the caller silently got the default.
-        raise ValueError(f"{name} does not accept {unknown} (accepted: {sorted(spec.properties)})")
-    missing = [key for key in spec.required if key not in arguments]
-    if missing:
-        raise ValueError(f"{name} requires {missing}")
-
-    call_args = {
-        key: value for key, value in arguments.items() if value is not None or key in spec.required
-    }
-    return spec.verb(**call_args)
+    """Dispatch one tool call. Thin by design -- the logic is shared, see `tool_spec`."""
+    return _dispatch(_BY_NAME, name, arguments)
 
 
 def parse_types(value: Any) -> set[str] | None:

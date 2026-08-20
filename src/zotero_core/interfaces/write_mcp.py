@@ -66,8 +66,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-from collections.abc import Callable
-from dataclasses import dataclass, field
 from typing import Any
 
 from .. import __version__
@@ -102,6 +100,8 @@ from ..write.verbs import (
     update_metadata,
     write_note,
 )
+from .tool_spec import WriteToolSpec as _ToolSpec
+from .tool_spec import dispatch as _dispatch
 
 SERVER_NAME = "zotero-writes"
 
@@ -133,38 +133,6 @@ _COPY_DB = {
         "unrelated change since."
     ),
 }
-
-
-@dataclass(frozen=True)
-class _ToolSpec:
-    """One tool: its name, the verb it calls, and the arguments it accepts.
-
-    `verb` is the real function from `writes.py` / `collections.py`, not a wrapper.
-    Every argument is passed by KEYWORD -- each verb's leading parameters are
-    positional-or-keyword, so there is no need to track which are which, and no
-    per-verb adapter to drift from the schema.
-    """
-
-    name: str
-    verb: Callable[..., dict]
-    description: str
-    properties: dict[str, dict] = field(default_factory=dict)
-    required: tuple[str, ...] = ()
-    # Which plugin performs this verb. DECLARED here because it was previously
-    # hardcoded three times per verb, independently and unlinked: what
-    # `require_zotero(needs=...)` demands, what `session.<name>.call/post` actually
-    # invokes, and the literal `"transport": "..."` string in the result. Nothing
-    # asserted the three agreed, so a verb could demand one plugin, use another, and
-    # report a third. "both" is preflight, which probes each separately on purpose;
-    # "none" is a verb that touches no plugin.
-    transport: str = "cookjohn"
-
-    def as_tool_schema(self) -> dict:
-        return {
-            "type": "object",
-            "properties": dict(self.properties),
-            "required": list(self.required),
-        }
 
 
 def list_undo(limit: int = 25) -> dict:
@@ -619,38 +587,8 @@ _BY_NAME = {spec.name: spec for spec in TOOLS}
 
 
 def call_writes(name: str, arguments: dict[str, Any]) -> Any:
-    """Dispatch one tool call to its verb. Raises rather than returning an envelope.
-
-    Errors travel as exceptions so `call_tool` has ONE place that turns them into a
-    result -- and so a `WriteBlocked` raised by a gate and one raised by a transport
-    are handled identically, which is the property that makes `code` reliable.
-    """
-    spec = _BY_NAME.get(name)
-    if spec is None:
-        raise ValueError(f"Unknown tool: {name}")
-
-    unknown = sorted(set(arguments) - set(spec.properties))
-    if unknown:
-        # Refused rather than dropped. A caller that passed `journal_dir` or `store`
-        # would otherwise get a silent no-op on the argument it cared about, and a
-        # caller that misspelled `force` would get the refusal it was trying to pass.
-        raise ValueError(f"{name} does not accept {unknown} (accepted: {sorted(spec.properties)})")
-    missing = [key for key in spec.required if key not in arguments]
-    if missing:
-        raise ValueError(f"{name} requires {missing}")
-
-    # An explicit null on an OPTIONAL argument is dropped so the verb's own default
-    # applies -- some clients send every declared property, and `action=None` would
-    # otherwise defeat `write_note`'s default of "create". A null on a REQUIRED
-    # argument is passed through on purpose: the verb's gate answers it with a
-    # `WriteBlocked` carrying a code (`unknown_item_type`, `no_item_keys`), which is a
-    # better answer than a ValueError from here.
-    call_args = {
-        key: value
-        for key, value in arguments.items()
-        if value is not None or key in spec.required
-    }
-    return spec.verb(**call_args)
+    """Dispatch one tool call. Thin by design -- the logic is shared, see `tool_spec`."""
+    return _dispatch(_BY_NAME, name, arguments)
 
 
 def run() -> None:

@@ -321,3 +321,28 @@ def test_the_context_is_configurable_by_environment(monkeypatch, tmp_path):
     monkeypatch.setenv("ZOTERO_CORE_DB", str(tmp_path / "elsewhere.sqlite"))
     ctx = read_mcp.context()
     assert str(tmp_path / "elsewhere.sqlite") in str(ctx.items.db_path)
+
+
+def test_both_adapters_share_one_tool_declaration_and_one_dispatch():
+    """`_ToolSpec` and the dispatch existed TWICE, byte-identical apart from comments.
+
+    Both adapters exist because of the `TOOLS` table -- each replaced a three-place-per-tool
+    change with one entry. Declaring the table's row type twice, and its dispatch twice,
+    reintroduced exactly that duplication one level up.
+    """
+    from zotero_core.interfaces import read_mcp, tool_spec, write_mcp
+
+    # one row type, with the write side adding only `transport`
+    assert issubclass(tool_spec.WriteToolSpec, tool_spec.ToolSpec)
+    assert all(isinstance(s, tool_spec.ToolSpec) for s in read_mcp.TOOLS)
+    assert all(isinstance(s, tool_spec.WriteToolSpec) for s in write_mcp.TOOLS)
+
+    # a read tool must NOT claim a transport it does not have
+    assert not any(hasattr(s, "transport") for s in read_mcp.TOOLS)
+
+    # and one dispatch, reached from both
+    import inspect
+
+    for module in (read_mcp, write_mcp):
+        src = inspect.getsource(module)
+        assert "_dispatch(_BY_NAME" in src, f"{module.__name__} hand-rolls its dispatch again"
