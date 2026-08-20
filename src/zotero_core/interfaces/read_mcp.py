@@ -42,6 +42,7 @@ from zotero_core.infrastructure.http.bridge import ZoteroBridgeError
 from zotero_core.infrastructure.sqlite.connect import ZoteroReadError
 from zotero_core.interfaces.arguments import parse_types
 from zotero_core.interfaces.factory import build_context
+from zotero_core.interfaces.mcp_runtime import run_stdio
 from zotero_core.interfaces.rendering import render_json
 from zotero_core.interfaces.tool_spec import ToolSpec as _ToolSpec
 from zotero_core.interfaces.tool_spec import dispatch as _dispatch
@@ -595,55 +596,19 @@ def run() -> None:
         pass
 
 
-async def main() -> None:
+def _render_call(name: str, arguments: dict[str, Any]) -> str:
+    """One tool call, rendered. The ONLY part of the server this adapter still owns.
+
+    Every failure becomes data with a `code` a caller can branch on -- "a locked database, a
+    missing key and a closed Zotero used to be indistinguishable", which is what `_CODES`
+    exists for. The write adapter's version differs precisely here, which is why this is the
+    callback and the rest is shared.
+    """
     try:
-        import mcp.types as types
-        from mcp.server import NotificationOptions, Server
-        from mcp.server.models import InitializationOptions
-        from mcp.server.stdio import stdio_server
-    except ImportError as exc:
-        raise SystemExit(
-            "The MCP adapter requires the optional dependency: uv sync --extra mcp"
-        ) from exc
+        return render_json(call_read(name, arguments))
+    except Exception as exc:  # noqa: BLE001 - the envelope is the contract
+        return render_json({"ok": False, "code": error_code(exc), "error": str(exc)})
 
-    from zotero_core import __version__
 
-    server = Server(SERVER_NAME)
-
-    @server.list_tools()
-    async def list_tools() -> list[types.Tool]:
-        return [
-            types.Tool(
-                name=spec.name,
-                description=spec.description,
-                inputSchema=spec.as_tool_schema(),
-            )
-            for spec in TOOLS
-        ]
-
-    @server.call_tool()
-    async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextContent]:
-        try:
-            payload = call_read(name, arguments or {})
-            text = render_json(payload)
-        except Exception as exc:
-            text = render_json(
-                {"ok": False, "code": error_code(exc), "error": str(exc)}
-            )
-        return [types.TextContent(type="text", text=text)]
-
-    async with stdio_server() as (read_stream, write_stream):
-        await server.run(
-            read_stream,
-            write_stream,
-            InitializationOptions(
-                server_name=SERVER_NAME,
-                # Was hardcoded "0.1.0" and would have stayed there through every
-                # release; it is the package version now.
-                server_version=__version__,
-                capabilities=server.get_capabilities(
-                    notification_options=NotificationOptions(),
-                    experimental_capabilities={},
-                ),
-            ),
-        )
+async def main() -> None:
+    await run_stdio(SERVER_NAME, TOOLS, _render_call)

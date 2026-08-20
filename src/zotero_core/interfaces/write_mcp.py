@@ -72,7 +72,6 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
-from zotero_core import __version__
 from zotero_core.application.results import ok
 from zotero_core.application.services.collections import (
     add_items_to_collection,
@@ -102,6 +101,7 @@ from zotero_core.application.services.verbs import (
 )
 from zotero_core.domain.errors import WriteBlocked
 from zotero_core.interfaces.factory import build_write_session
+from zotero_core.interfaces.mcp_runtime import run_stdio
 from zotero_core.interfaces.rendering import render_json
 from zotero_core.interfaces.tool_spec import WriteToolSpec as _ToolSpec
 from zotero_core.interfaces.tool_spec import dispatch as _dispatch
@@ -634,57 +634,25 @@ def run() -> None:
         pass
 
 
-async def main() -> None:
+def _render_call(name: str, arguments: dict[str, Any]) -> str:
+    """One tool call, rendered. The ONLY part of the server this adapter still owns.
+
+    The `WriteBlocked` branch is the whole reason this adapter exists rather than a raw
+    `uv run python`: a precondition failure is DATA -- `code` is the stable field a caller
+    branches on, `detail` carries what is currently there and would otherwise be lost -- and
+    a traceback discards all of it.
+    """
     try:
-        import mcp.types as types
-        from mcp.server import NotificationOptions, Server
-        from mcp.server.models import InitializationOptions
-        from mcp.server.stdio import stdio_server
-    except ImportError as exc:
-        raise SystemExit(
-            "The MCP adapter requires the optional dependency: uv sync --extra mcp"
-        ) from exc
+        payload = call_writes(name, arguments)
+    except WriteBlocked as exc:
+        payload = exc.as_dict()
+    except Exception as exc:  # noqa: BLE001 - the envelope is the contract
+        payload = {"ok": False, "error": str(exc), "error_type": type(exc).__name__}
+    return _render(payload)
 
-    server = Server(SERVER_NAME)
 
-    @server.list_tools()
-    async def list_tools() -> list[types.Tool]:
-        return [
-            types.Tool(
-                name=spec.name,
-                description=spec.description,
-                inputSchema=spec.as_tool_schema(),
-            )
-            for spec in TOOLS
-        ]
-
-    @server.call_tool()
-    async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextContent]:
-        try:
-            payload = call_writes(name, arguments or {})
-        except WriteBlocked as exc:
-            # The whole reason this adapter exists rather than a raw `uv run python`.
-            # A precondition failure is DATA -- `code` is the stable field a caller
-            # branches on, `detail` carries what is currently there and would have been
-            # lost -- and a traceback discards all of it.
-            payload = exc.as_dict()
-        except Exception as exc:  # noqa: BLE001 - the envelope is the contract
-            payload = {"ok": False, "error": str(exc), "error_type": type(exc).__name__}
-        return [types.TextContent(type="text", text=_render(payload))]
-
-    async with stdio_server() as (read_stream, write_stream):
-        await server.run(
-            read_stream,
-            write_stream,
-            InitializationOptions(
-                server_name=SERVER_NAME,
-                server_version=__version__,
-                capabilities=server.get_capabilities(
-                    notification_options=NotificationOptions(),
-                    experimental_capabilities={},
-                ),
-            ),
-        )
+async def main() -> None:
+    await run_stdio(SERVER_NAME, TOOLS, _render_call)
 
 
 def _render(payload: Any) -> str:

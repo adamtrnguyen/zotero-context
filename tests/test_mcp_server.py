@@ -385,10 +385,13 @@ def test_preflight_reports_an_unresolvable_key_as_data(session):
 # --------------------------------------------------------------------------
 
 def test_mcp_is_imported_inside_a_function_never_at_module_level():
-    """`dependencies = []` is the promise (nothing is vendored anywhere — that premise was false), a
-    Calibre plugin running inside Calibre's embedded Python which cannot see a uv
-    virtualenv. A module-level `import mcp` here would put an async runtime in that
-    import path — and would make every consumer of `zotero_core.application` need the extra.
+    """`dependencies = []` is the promise this protects. A module-level `import mcp` here
+    would make every consumer of `zotero_core.application` need the extra — `omni-rag`
+    imports this package inside its ARC entrypoints, where an async runtime pulled in by a
+    tag verb is a real cost.
+
+    ⚠ This docstring previously justified the rule by claiming `cookjohn.py` is vendored into
+    `calibre-zotero-jump`. Nothing is vendored there; the rule stands on the line above.
 
     Checked against the source rather than `sys.modules`, which another test may have
     populated. `.importlinter` enforces the same rule from the other direction."""
