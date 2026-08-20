@@ -181,6 +181,10 @@ def get_zotero_trash_count(*, ctx: ZoteroContext) -> dict:
     return ctx.trash_count()
 
 
+def get_zotero_trash_items(*, ctx: ZoteroContext) -> dict:
+    return ctx.trash_items()
+
+
 def ping_zotero(*, ctx: ZoteroContext) -> dict:
     # CLI-only until now, so an agent could not ask "is the bridge up?" -- it could only
     # infer it from the shape of a failure.
@@ -392,7 +396,21 @@ TOOLS: tuple[_ToolSpec, ...] = (
     _ToolSpec(
         name="get_zotero_trash_count",
         verb=get_zotero_trash_count,
-        description="How many items are currently in the Zotero trash.",
+        description=(
+            "How many items are in the trash of ONE library (the user library by default). "
+            "Scoped like every other read here — a machine with group libraries will see a "
+            "smaller number than Zotero's global trash view."
+        ),
+    ),
+    _ToolSpec(
+        name="get_zotero_trash_items",
+        verb=get_zotero_trash_items,
+        description=(
+            "WHAT is in the trash: key, title, item type and the date each was deleted, "
+            "newest first. Trashed items are reachable through no other read — they are "
+            "excluded from search and belong to no collection — so this is the only way to "
+            "answer 'what did I delete, and when'."
+        ),
     ),
     _ToolSpec(
         name="get_zotero_collections",

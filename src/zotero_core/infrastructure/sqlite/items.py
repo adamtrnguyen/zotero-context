@@ -47,6 +47,7 @@ from pathlib import Path
 from zotero_core.domain.entities.models import (
     ItemState,
     ItemStates,
+    TrashedItem,
     ZoteroAttachment,
     ZoteroAttachments,
 )
@@ -163,20 +164,73 @@ class ZoteroItemStore:
         return out
 
     def trashed_count(self) -> tuple[int, str]:
-        """How many items are in the trash, AND the read mode that served the count.
+        """How many items are in THIS library's trash, and the read mode that served it.
 
-        ⚠ The mode used to be discarded — `conn, _ = self._connect()`. Every other read in
-        this package reports which mode answered it, and a trash count is exactly the kind
-        of answer where it matters: under an `immutable=1` snapshot the number can predate
-        a purge that has already happened, and a caller comparing it around a write would
-        read that as the write having done nothing.
+        ⚠ WAS `SELECT COUNT(*) FROM deletedItems` with no library scope, while this file's
+        own docstring three methods down says "Scoped to `library_id` like every other read
+        here". It was the single unscoped read in the package: on a machine with group
+        libraries it answered about all seven while every sibling answered about one, so
+        comparing it against any other count compared two different populations.
         """
         conn, read_mode = self._connect()
         try:
-            count = int(conn.execute("SELECT COUNT(*) FROM deletedItems").fetchone()[0])
+            count = int(
+                conn.execute(
+                    """
+                    SELECT COUNT(*)
+                    FROM deletedItems d
+                    JOIN items i ON i.itemID = d.itemID
+                    WHERE i.libraryID = ?
+                    """,
+                    (self.library_id,),
+                ).fetchone()[0]
+            )
         finally:
             conn.close()
         return count, read_mode
+
+    def trashed_items(self) -> tuple[tuple[TrashedItem, ...], str]:
+        """WHAT is in the trash, not just how many -- with the date each was deleted.
+
+        New capability rather than a repair. Trashed rows are excluded from `search.items`
+        by SQL and belong to no collection, so before this there was no way to name them:
+        measured, 22 of 25 were unreachable through the public surface, and none could be
+        dated. "Clear the 2024 trash" was not a question this package could answer.
+        """
+        conn, read_mode = self._connect()
+        try:
+            rows = conn.execute(
+                """
+                SELECT i.key,
+                       COALESCE(idv.value, ''),
+                       it.typeName,
+                       d.dateDeleted
+                FROM deletedItems d
+                JOIN items i ON i.itemID = d.itemID
+                JOIN itemTypes it ON it.itemTypeID = i.itemTypeID
+                LEFT JOIN itemData id
+                       ON id.itemID = i.itemID
+                      AND id.fieldID = (SELECT fieldID FROM fields WHERE fieldName = 'title')
+                LEFT JOIN itemDataValues idv ON idv.valueID = id.valueID
+                WHERE i.libraryID = ?
+                ORDER BY d.dateDeleted DESC
+                """,
+                (self.library_id,),
+            ).fetchall()
+        finally:
+            conn.close()
+        return (
+            tuple(
+                TrashedItem(
+                    key=row[0],
+                    title=row[1] or "(no title)",
+                    item_type=row[2] or "",
+                    date_deleted=row[3] or "",
+                )
+                for row in rows
+            ),
+            read_mode,
+        )
 
     # ----------------------------------------------------------------------
     # prior state, for writes that overwrite rather than add

@@ -33,6 +33,11 @@ class ZoteroSource:
     authors: str
     annotation_count: int
     citekey: str = ""
+    #: What the annotated attachment IS. Added 2026-08-20 because the query that builds this
+    #: used to filter to `application/pdf` and silently dropped every annotated HTML snapshot
+    #: — carrying the type instead of filtering on it lets a caller narrow without the reader
+    #: deciding for them.
+    content_type: str = ""
 
 @dataclass(frozen=True)
 class Annotation:
@@ -210,3 +215,23 @@ class Library:
     editable: bool
     item_count: int
     collection_count: int
+
+
+@dataclass(frozen=True)
+class TrashedItem:
+    """One item in the trash, with the date it was put there.
+
+    ⚠ THE FIRST TIMESTAMP THIS PACKAGE READS. `grep -rn "dateAdded|dateModified|dateDeleted"`
+    over `src/` returned zero hits before this: `deletedItems` was only ever COUNTED or used
+    as a `NOT IN` filter, so "which of these did I trash in 2024" was not a question the
+    package could answer — and 22 of the 25 trashed items could not even be named, because
+    trashed rows are excluded from `search.items` and belong to no collection.
+
+    `date_deleted` is Zotero's own string (`YYYY-MM-DD HH:MM:SS`, UTC), passed through rather
+    than parsed. Parsing it here would invent a timezone the database does not state.
+    """
+
+    key: str
+    title: str
+    item_type: str
+    date_deleted: str

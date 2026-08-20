@@ -400,3 +400,107 @@ def test_both_adapters_share_one_tool_declaration_and_one_dispatch():
     for module in (read_mcp, write_mcp):
         src = inspect.getsource(module)
         assert "_dispatch(" in src, f"{module.__name__} hand-rolls its dispatch again"
+
+
+# --------------------------------------------------------------------------
+# sources with annotations -- the verb that used to hide 5 of 18
+# --------------------------------------------------------------------------
+
+
+def test_an_annotated_html_snapshot_is_a_source(zotero, ctx):
+    """⚠ FOUR annotated snapshots were invisible in the live library, carrying 77
+    annotations between them — one of them the second half of a duplicated paper.
+
+    The query filtered `att.contentType = 'application/pdf'`. Zotero annotates snapshots and
+    EPUBs too, so the filter did not narrow the answer, it falsified it: the verb an agent
+    reaches for to audit annotation coverage reported a clean library.
+    """
+    zotero.add("PARENT01", "A Paper With A Snapshot")
+    zotero.add("SNAP0001", "snapshot.html", "attachment",
+               parent="PARENT01", content_type="text/html")
+    zotero.add("ANNO0001", "", "annotation", parent="SNAP0001")
+
+    out = ctx.get_sources_with_annotations(include_citekeys=False)
+    keys = {s.attachment_key for s in out["sources"]}
+    assert "SNAP0001" in keys, "an annotated HTML snapshot is still being dropped"
+    snap = next(s for s in out["sources"] if s.attachment_key == "SNAP0001")
+    assert snap.content_type == "text/html"      # carried, not filtered on
+    assert snap.parent_key == "PARENT01"
+
+
+def test_a_standalone_annotated_attachment_is_its_own_source(zotero, ctx):
+    """The other dropped shape: the query joined THROUGH a parent, so an attachment filed
+    directly in the library had no row at all.
+
+    A standalone attachment is its own source rather than no source, so it reports its own
+    key — stated here because `ZoteroSource.parent_key` is a `str` and the alternative
+    (empty) would read as "parent unknown" rather than "there is no parent".
+    """
+    zotero.add("LOOSE001", "loose.pdf", "attachment")     # no parent=
+    zotero.add("ANNO0002", "", "annotation", parent="LOOSE001")
+
+    out = ctx.get_sources_with_annotations(include_citekeys=False)
+    loose = next(s for s in out["sources"] if s.attachment_key == "LOOSE001")
+    assert loose.parent_key == "LOOSE001"
+    assert loose.annotation_count == 1
+
+
+def test_the_sources_verb_agrees_with_the_annotation_search(zotero, ctx):
+    """THE PROPERTY, rather than the two shapes. Both read the same table, so any attachment
+    the search can find must be reachable as a source — that equality is what broke, and it
+    broke quietly because each verb was self-consistent."""
+    zotero.add("PARENT02", "Another Paper")
+    zotero.add("PDF00002", "paper.pdf", "attachment", parent="PARENT02")
+    zotero.add("ANNO0003", "", "annotation", parent="PDF00002")
+    zotero.add("SNAP0002", "snap.html", "attachment",
+               parent="PARENT02", content_type="text/html")
+    zotero.add("ANNO0004", "", "annotation", parent="SNAP0002")
+
+    hits, _ = ctx.search.annotations("", limit=10**9)
+    searchable = {h.attachment_key for h in hits}
+    reported = {s.attachment_key for s in ctx.get_sources_with_annotations(
+        include_citekeys=False)["sources"]}
+    assert searchable == reported
+
+
+# --------------------------------------------------------------------------
+# trash -- the one unscoped read, and the first timestamp the package reads
+# --------------------------------------------------------------------------
+
+
+def test_the_trash_count_is_scoped_to_one_library(zotero, ctx):
+    """⚠ THE ONE UNSCOPED READ IN THE PACKAGE. `SELECT COUNT(*) FROM deletedItems` carried no
+    `libraryID`, while `items.py`'s own docstring says "Scoped to `library_id` like every
+    other read here".
+
+    On the live library this was not academic: the unscoped count answered 25 while the user
+    library's trash is EMPTY — all 25 sit in three group libraries. Any comparison against a
+    sibling read was comparing two different populations.
+    """
+    zotero.add("MINE0001", "mine", trashed=True, library_id=1)
+    zotero.add("THEIR001", "theirs", trashed=True, library_id=2)
+
+    from zotero_core.infrastructure.sqlite.items import ZoteroItemStore
+
+    mine, _ = ZoteroItemStore(zotero.path, library_id=1).trashed_count()
+    theirs, _ = ZoteroItemStore(zotero.path, library_id=2).trashed_count()
+    assert (mine, theirs) == (1, 1), "the count is leaking across libraries"
+
+
+def test_trashed_items_can_be_named_and_dated(zotero, ctx):
+    """Before this, 22 of 25 trashed items could not be NAMED at all -- they are excluded
+    from `search.items` by SQL and belong to no collection, so no public read reached them --
+    and none could be dated, because nothing in the package read a timestamp."""
+    zotero.add("OLD00001", "An Old Mistake", trashed=True, deleted_at="2024-03-12 23:10:11")
+    zotero.add("NEW00001", "A Recent One", trashed=True, deleted_at="2026-08-20 09:00:00")
+    zotero.add("ALIVE001", "Still Here")
+
+    out = ctx.trash_items()
+    by_key = {i["key"]: i for i in out["items"]}
+    assert set(by_key) == {"OLD00001", "NEW00001"}, "a live item leaked into the trash listing"
+    assert by_key["OLD00001"]["date_deleted"].startswith("2024")
+    assert by_key["OLD00001"]["title"] == "An Old Mistake"
+    assert out["count"] == 2
+    assert out["read_mode"] in {"mode=ro", "immutable=1"}
+    # newest first, so "what did I just delete" is the first row rather than the last
+    assert [i["key"] for i in out["items"]] == ["NEW00001", "OLD00001"]

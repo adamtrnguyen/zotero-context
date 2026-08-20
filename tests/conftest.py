@@ -94,6 +94,11 @@ class ZoteroBuilder:
         parent: str | None = None,
         library_id: int = 1,
         stored: bool = False,
+        # ⚠ Attachments were hardcoded to `application/pdf`, so the fixture could not express
+        # an annotated HTML snapshot — the exact shape `get_sources_with_annotations` was
+        # silently dropping. A fixture that cannot build the broken case cannot catch it.
+        content_type: str = "application/pdf",
+        deleted_at: str | None = None,
         fields: dict[str, str] | None = None,
         tags: list[str] | None = None,
         creators: list[dict[str, str]] | None = None,
@@ -116,11 +121,12 @@ class ZoteroBuilder:
             # to live at `<storage>/<KEY>/`, so a linked attachment must NOT be enumerated.
             con.execute(
                 "INSERT INTO itemAttachments (itemID, parentItemID, linkMode, contentType, path) "
-                "VALUES (?,?,?,'application/pdf',?)",
+                "VALUES (?,?,?,?,?)",
                 (
                     item_id,
                     parent_id,
                     0 if stored else 2,
+                    content_type,
                     f"storage:{key}.pdf" if stored else f"attachments:{key}.pdf",
                 ),
             )
@@ -137,7 +143,13 @@ class ZoteroBuilder:
                 (item_id, parent_id),
             )
         if trashed:
-            con.execute("INSERT INTO deletedItems (itemID) VALUES (?)", (item_id,))
+            # `dateDeleted` is recorded because it is the only timestamp this package reads
+            # and the whole point of `trashed_items()`. The fixture used to insert the itemID
+            # alone, so a test could not tell a 2024 delete from today's.
+            con.execute(
+                "INSERT INTO deletedItems (itemID, dateDeleted) VALUES (?,?)",
+                (item_id, deleted_at or "2024-03-12 23:10:11"),
+            )
         con.commit()
         con.close()
 

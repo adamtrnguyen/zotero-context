@@ -237,6 +237,29 @@ class ZoteroContext:
         count, read_mode = self.items.trashed_count()
         return {"count": count, "read_mode": read_mode}
 
+    def trash_items(self) -> dict:
+        """WHAT is in the trash, each with the date it was deleted.
+
+        The companion to `trash_count`, and the reason it exists: a count alone cannot answer
+        "which of these did I trash in 2024", and trashed rows are reachable through no other
+        read in this package -- they are excluded from `search.items` and belong to no
+        collection.
+        """
+        items, read_mode = self.items.trashed_items()
+        return {
+            "count": len(items),
+            "read_mode": read_mode,
+            "items": [
+                {
+                    "key": item.key,
+                    "title": item.title,
+                    "item_type": item.item_type,
+                    "date_deleted": item.date_deleted,
+                }
+                for item in items
+            ],
+        }
+
     def collection_tree(self, *, library_id: int | None = None) -> dict:
         """The whole collection tree, nested, with breadcrumb paths and item counts."""
         tree = self._collections_for(library_id).tree()

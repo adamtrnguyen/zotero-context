@@ -48,6 +48,7 @@ def test_unknown_command_raises():
         (["duplicate", "--title", "x"], "duplicate"),
         (["pdfs", "--limit", "3"], "pdfs"),
         (["trash-count"], "trash-count"),
+        (["trash-items"], "trash-items"),
     ],
 )
 def test_the_catalogue_verbs_parse(argv, expected):
@@ -84,6 +85,7 @@ def test_the_cli_and_the_mcp_surface_expose_the_same_catalogue_reads():
         "duplicate": "check_zotero_duplicate",
         "pdfs": "list_zotero_pdfs",
         "trash-count": "get_zotero_trash_count",
+        "trash-items": "get_zotero_trash_items",
         "ping": "ping_zotero",
         "window-state": "get_zotero_window_state",
         "annotations": "get_zotero_annotations",

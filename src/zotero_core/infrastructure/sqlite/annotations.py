@@ -66,22 +66,38 @@ class ZoteroAnnotationStore:
         return annotations
 
     def get_sources_with_annotations(self) -> list[ZoteroSource]:
+        """Every attachment carrying annotations, with the item it belongs to.
+
+        ⚠ THIS USED TO HIDE 5 OF 18. The query started from `items parent` and required
+        `att.contentType = 'application/pdf'`, so it dropped two whole shapes:
+
+            4 × text/html   annotated web snapshots, 77 annotations between them
+            1 × PDF         a STANDALONE attachment, filtered out by the parent JOIN
+
+        Zotero annotates snapshots and EPUBs, not only PDFs, and an attachment with no parent
+        is its own source rather than no source. The verb an agent reaches for to audit
+        annotation coverage was reporting a clean library while hiding the interesting rows —
+        including the second half of a duplicated paper.
+
+        The type is now CARRIED (`ZoteroSource.content_type`) rather than filtered on: a
+        caller wanting only PDFs can still say so, and one that does not is no longer lied to.
+        `list_pdfs` still restricts to PDFs on purpose — it enumerates the PDF corpus for
+        `omni-rag`, which is a different question.
+        """
         with self._connect() as conn:
             rows = conn.execute(
                 """
-                WITH item_pdfs AS (
+                WITH annotated AS (
                     SELECT
-                        parent.key       AS parent_key,
-                        parent.itemID    AS parent_id,
-                        pdf.key          AS pdf_key,
-                        pdf.itemID       AS pdf_id,
+                        att.itemID       AS att_id,
+                        a.key            AS att_key,
+                        att.parentItemID AS parent_id,
+                        att.contentType  AS content_type,
                         COUNT(ia.itemID) AS ann_count
-                    FROM items parent
-                    JOIN itemAttachments att ON att.parentItemID = parent.itemID
-                    JOIN items pdf ON pdf.itemID = att.itemID
-                    LEFT JOIN itemAnnotations ia ON ia.parentItemID = pdf.itemID
-                    WHERE att.contentType = 'application/pdf'
-                    GROUP BY pdf.itemID
+                    FROM itemAttachments att
+                    JOIN items a ON a.itemID = att.itemID
+                    JOIN itemAnnotations ia ON ia.parentItemID = att.itemID
+                    GROUP BY att.itemID
                     HAVING ann_count > 0
                 ),
                 titles AS (
@@ -99,15 +115,19 @@ class ZoteroAnnotationStore:
                     GROUP BY ic.itemID
                 )
                 SELECT
-                    ip.parent_key,
-                    ip.pdf_key,
-                    COALESCE(t.title, ''),
-                    COALESCE(a.author_list, ''),
-                    ip.ann_count
-                FROM item_pdfs ip
-                LEFT JOIN titles t ON t.itemID = ip.parent_id
-                LEFT JOIN authors a ON a.itemID = ip.parent_id
-                ORDER BY t.title COLLATE NOCASE
+                    -- a standalone attachment is its OWN source, so it reports its own key
+                    COALESCE(p.key, an.att_key),
+                    an.att_key,
+                    COALESCE(t.title, ta.title, ''),
+                    COALESCE(au.author_list, ''),
+                    an.ann_count,
+                    COALESCE(an.content_type, '')
+                FROM annotated an
+                LEFT JOIN items p ON p.itemID = an.parent_id
+                LEFT JOIN titles t ON t.itemID = an.parent_id
+                LEFT JOIN titles ta ON ta.itemID = an.att_id
+                LEFT JOIN authors au ON au.itemID = an.parent_id
+                ORDER BY COALESCE(t.title, ta.title) COLLATE NOCASE
                 """
             ).fetchall()
         return [
@@ -117,6 +137,7 @@ class ZoteroAnnotationStore:
                 title=row[2] or "(no title)",
                 authors=row[3] or "",
                 annotation_count=int(row[4] or 0),
+                content_type=row[5] or "",
             )
             for row in rows
         ]

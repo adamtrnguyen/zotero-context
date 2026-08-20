@@ -83,7 +83,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
     pdfs = sub.add_parser("pdfs", parents=[common], help="Enumerate stored PDF attachments")
     pdfs.add_argument("--limit", type=int)
-    sub.add_parser("trash-count", parents=[common], help="How many items are in the trash")
+    sub.add_parser(
+        "trash-count", parents=[common], help="How many items are in this library's trash"
+    )
+    sub.add_parser(
+        "trash-items",
+        parents=[common],
+        help="WHAT is in the trash: key, title, type and the date deleted, newest first",
+    )
 
     sub.add_parser("libraries", parents=[common], help="Every library, with item counts")
     colls = sub.add_parser("collections", parents=[common], help="The whole collection tree")
@@ -183,6 +190,7 @@ _HANDLERS: dict[str, Callable[[ZoteroContext, argparse.Namespace], Any]] = {
     "duplicate": _duplicate,
     "pdfs": lambda ctx, a: ctx.list_pdfs(limit=a.limit),
     "trash-count": lambda ctx, _a: ctx.trash_count(),
+    "trash-items": lambda ctx, _a: ctx.trash_items(),
     "libraries": lambda ctx, _a: ctx.list_libraries(),
     "collections": lambda ctx, a: ctx.collection_tree(library_id=a.library_id),
     "collection-items": lambda ctx, a: ctx.collection_items(
