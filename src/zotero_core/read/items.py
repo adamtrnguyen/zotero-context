@@ -461,6 +461,88 @@ class ZoteroItemStore:
                 )
         return tuple(creators)
 
+    def attachment_info(self, attachment_key: str, *, base_path: str | Path | None = None) -> dict:
+        """Where one attachment's file actually is, and whether it is there.
+
+        Exists so a write can verify that a LINKED file resolves. That is not a
+        hypothetical failure mode on this machine: 31 linked attachments currently point
+        at Calibre directories that were renamed, so the items look like they have a PDF
+        and open to an error. Nothing catches that at write time because nothing looked.
+
+        linkMode: 0 imported file, 1 imported URL (both live under storage/<key>/),
+        2 linked file, 3 linked URL (no file at all).
+
+        ⚠ A linked path may be stored as `attachments:<relative>`, relative to Zotero's
+        BASE DIRECTORY -- and that base is NOT in the database. Zotero keeps it in
+        `prefs.js` in the profile, which this layer does not read. So a relative path
+        cannot be resolved from sqlite alone, and reporting `file_exists: False` for one
+        would be a FALSE NEGATIVE on the majority of this library's attachments (772 of
+        1368 are linked). Pass `base_path` to resolve them; without it such a row comes
+        back `file_exists: None` and `relative_to_base: True`, which is "I cannot tell"
+        rather than "it is missing".
+        """
+        conn, read_mode = self._connect()
+        try:
+            row = conn.execute(
+                """
+                SELECT ia.linkMode, COALESCE(ia.path, ''), COALESCE(ia.contentType, '')
+                  FROM itemAttachments ia
+                  JOIN items i ON i.itemID = ia.itemID
+                 WHERE i.key = ? AND i.libraryID = ?
+                """,
+                (attachment_key, self.library_id),
+            ).fetchone()
+        finally:
+            conn.close()
+
+        if row is None:
+            return {"exists": False, "read_mode": read_mode}
+
+        link_mode, raw_path, content_type = row
+        info: dict = {
+            "exists": True,
+            "read_mode": read_mode,
+            "link_mode": link_mode,
+            "stored": link_mode in (0, 1),
+            "content_type": content_type,
+            "raw_path": raw_path,
+        }
+        if link_mode == 3 or not raw_path:
+            # A linked URL has no file, and neither does a row with an empty path.
+            info["path"] = None
+            info["file_exists"] = None
+            return info
+
+        if link_mode in (0, 1):
+            # Imported: the file lives in storage/<key>/, and the stored path is
+            # `storage:<filename>`. Glob rather than trust the name, matching
+            # `pdf_attachments`.
+            folder = self.db_path.parent / "storage" / attachment_key
+            found = sorted(folder.glob("*")) if folder.is_dir() else []
+            real = next((f for f in found if not f.name.startswith(".")), None)
+            info["path"] = str(real) if real else None
+            info["file_exists"] = real is not None
+            return info
+
+        path = raw_path
+        if path.startswith("attachments:"):
+            rel = path[len("attachments:") :]
+            if base_path is None:
+                info["path"] = rel
+                info["relative_to_base"] = True
+                info["file_exists"] = None
+                info["note"] = (
+                    "stored relative to Zotero's base directory, which lives in prefs.js "
+                    "and not in the database — pass base_path to resolve it"
+                )
+                return info
+            path = str(Path(base_path).expanduser() / rel)
+        resolved = Path(path).expanduser()
+        info["path"] = str(resolved)
+        info["relative_to_base"] = False
+        info["file_exists"] = resolved.exists()
+        return info
+
     def _connect(self) -> tuple[sqlite3.Connection, str]:
         """Delegates to `connect.open_readonly`.
 

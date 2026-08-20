@@ -283,6 +283,45 @@ def _verify_collection(store, collection_key: str, *, name=None, parent_key=None
     return {"verified": True, "read_mode": tree.read_mode, "path": node.path}
 
 
+def _members_of(store, collection_key: str) -> tuple[set[str], str]:
+    from ..read.collections import ZoteroCollectionStore
+
+    reader = ZoteroCollectionStore(store.db_path, busy_timeout_ms=store.busy_timeout_ms)
+    members = reader.items(collection_key, include_trashed=True)
+    return {m.item_key for m in members.members}, members.read_mode
+
+
+def _verify_membership(store, collection_key: str, keys, *, present: bool) -> dict:
+    """Confirm each key IS (or is NOT) in the collection after the write.
+
+    `present=True` for a filing, False for an unfiling -- one function because the
+    question is the same one asked in two directions, and splitting it would be two
+    places to keep in step.
+
+    ⚠ This REPORTS rather than refuses. Filing an item that is already in a collection,
+    or unfiling one that was never in it, both succeed in Zotero and are no-ops; making
+    them errors would break calls that work today. What was missing is that the caller
+    could not tell a no-op from a real change -- `move_items_between_collections` refuses
+    the same situation, but only because a silent no-op there produces a WRONG RESULT
+    (the items end up filed in the target and never removed from the source) rather than
+    merely a pointless one.
+    """
+    after, read_mode = _members_of(store, collection_key)
+    wanted = set(keys)
+    wrong = sorted(wanted - after) if present else sorted(wanted & after)
+    if not wrong:
+        return {"verified": True, "read_mode": read_mode}
+    return {
+        "verified": "unverified",
+        "read_mode": read_mode,
+        ("missing_from_collection" if present else "still_in_collection"): wrong,
+        "note": (
+            "the membership does not read back as expected. If read_mode is immutable=1 "
+            "this may be a snapshot lagging the commit rather than a failed write"
+        ),
+    }
+
+
 def _verify_gone(store, collection_key: str) -> dict:
     """Confirm a collection is ABSENT. The one verification that inverts.
 
@@ -407,6 +446,7 @@ def add_items_to_collection(
     info = require_zotero(needs=("cookjohn",), linker=linker, cookjohn=cookjohn)
     require_items(store, keys)
     _find_collection(cookjohn, collection_key)
+    before_members, _ = _members_of(store, collection_key)
     reply = cookjohn.call(
         "add_items_to_collection", {"collectionKey": collection_key, "itemKeys": keys}
     )
@@ -415,7 +455,11 @@ def add_items_to_collection(
         transport='cookjohn',
         collection_key=collection_key,
         item_keys=keys,
+        # Informational, not a refusal: these were no-ops. Reported so a caller can tell
+        # "I filed 3 items" from "I filed 1 and re-filed 2".
+        already_present=sorted(set(keys) & before_members),
         cookjohn=reply,
+        verification=_verify_membership(store, collection_key, keys, present=True),
         undo_call=f'remove_items_from_collection({collection_key!r}, {keys!r})',
         versions=info,
     )
@@ -445,6 +489,7 @@ def remove_items_from_collection(
     require_items(store, keys)
     _find_collection(cookjohn, collection_key)
 
+    before_members, _ = _members_of(store, collection_key)
     manifest = write_manifest(
         "remove_items_from_collection",
         before={"collection_key": collection_key, "item_keys": keys},
@@ -459,7 +504,12 @@ def remove_items_from_collection(
         transport='cookjohn',
         collection_key=collection_key,
         item_keys=keys,
+        # Informational: these were never in the collection, so removing them changed
+        # nothing. The undo manifest still names them, which is correct -- re-adding an
+        # item that was not there is itself a no-op.
+        not_in_collection=sorted(set(keys) - before_members),
         cookjohn=reply,
+        verification=_verify_membership(store, collection_key, keys, present=False),
         undo_manifest=manifest,
         undo_call=f'add_items_to_collection({collection_key!r}, {keys!r})',
         versions=info,

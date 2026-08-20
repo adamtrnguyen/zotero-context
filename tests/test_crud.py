@@ -1036,3 +1036,139 @@ def test_write_note_verifies_type_and_parent_but_not_the_body(zotero, linker, co
     assert v["verified"] is True
     assert v["item_type"] == "note"
     assert v["body_checked"] is False
+
+
+def test_add_items_reports_which_were_already_there(zotero, linker, cookjohn):
+    """REPORTS, not refuses. Filing an item already in a collection is a no-op in Zotero
+    and making it an error would break calls that work today -- what was missing is that
+    the caller could not tell a no-op from a real change."""
+    coll = zotero.add_collection("Papers")
+    zotero.add("ABCD2345", "One")
+    zotero.add("BCDE3456", "Two")
+    zotero.add_to_collection("ABCD2345", coll)
+
+    out = add_items_to_collection(coll, ["ABCD2345", "BCDE3456"], **_kw(zotero, linker, cookjohn))
+    assert out["already_present"] == ["ABCD2345"]
+    assert out["verification"]["verified"] is True
+
+
+def test_remove_items_reports_which_were_never_there(zotero, linker, cookjohn):
+    coll = zotero.add_collection("Papers")
+    zotero.add("ABCD2345", "One")
+    zotero.add("BCDE3456", "Two")
+    zotero.add_to_collection("ABCD2345", coll)
+
+    out = remove_items_from_collection(
+        coll, ["ABCD2345", "BCDE3456"], **_kw(zotero, linker, cookjohn)
+    )
+    assert out["not_in_collection"] == ["BCDE3456"]
+    assert out["verification"]["verified"] is True
+
+
+def test_membership_verification_runs_in_both_directions(zotero, linker, cookjohn):
+    from zotero_core.write.collections import _verify_membership
+
+    coll = zotero.add_collection("Papers")
+    zotero.add("ABCD2345", "One")
+    zotero.add_to_collection("ABCD2345", coll)
+    store = zotero.store()
+
+    assert _verify_membership(store, coll, ["ABCD2345"], present=True)["verified"] is True
+    absent = _verify_membership(store, coll, ["ABCD2345"], present=False)
+    assert absent["verified"] == "unverified"
+    assert absent["still_in_collection"] == ["ABCD2345"]
+
+
+def test_link_attachment_verifies_the_file_is_actually_there(zotero, linker, cookjohn, tmp_path):
+    """The file check is the point. This library has 31 LIVE dangling links -- items that
+    look like they have a PDF and open to an error -- and nothing caught them at write
+    time because nothing looked."""
+    zotero.add("PARENT12", "The Parent", item_type="book")
+    pdf = tmp_path / "real.pdf"
+    pdf.write_bytes(b"%PDF-1.4\n")
+
+    out = link_attachment("PARENT12", str(pdf), **_kw(zotero, linker, cookjohn))
+    v = out["verification"]
+    assert v["item_type"] == "attachment"
+    assert v["file"] in {"present", "unresolved"}
+
+
+def test_attachment_verification_flags_a_missing_file_as_unverified(zotero):
+    """A row that exists whose file does not is exactly the dangling-link shape.
+
+    `stored=True` on purpose: a STORED attachment resolves to storage/<key>/, which is
+    absolute and globbable, so absence is knowable. A LINKED one here would be stored
+    relative to Zotero's base directory, and the honest answer for that is `unresolved`
+    rather than `missing` -- see the next test.
+    """
+    from zotero_core.write.verbs import _verify_attachment
+
+    zotero.add("PARENT12", "The Parent", item_type="book")
+    zotero.add("ATTACH01", item_type="attachment", parent="PARENT12", title="", stored=True)
+    verdict = _verify_attachment(zotero.store(), "ATTACH01", "PARENT12", expect_file=True)
+    assert verdict["verified"] == "unverified"
+    assert verdict["file"] == "missing"
+
+
+def test_a_relative_linked_path_is_unresolved_not_missing(zotero):
+    """The distinction that keeps this honest: 772 of this library's 1368 attachments are
+    LINKED, and their paths are relative to a base that lives in prefs.js, not sqlite.
+    Calling those missing would flag most of the library as broken."""
+    from zotero_core.write.verbs import _verify_attachment
+
+    zotero.add("PARENT12", "The Parent", item_type="book")
+    zotero.add("ATTACH01", item_type="attachment", parent="PARENT12", title="")  # linked
+    verdict = _verify_attachment(zotero.store(), "ATTACH01", "PARENT12", expect_file=True)
+    assert verdict["file"] == "unresolved"
+    assert verdict["verified"] is True
+
+
+def test_attachment_verification_catches_a_wrong_parent(zotero):
+    from zotero_core.write.verbs import _verify_attachment
+
+    zotero.add("PARENT12", "The Parent", item_type="book")
+    zotero.add("OTHER123", "Another", item_type="book")
+    zotero.add("ATTACH01", item_type="attachment", parent="PARENT12", title="")
+    verdict = _verify_attachment(zotero.store(), "ATTACH01", "OTHER123", expect_file=True)
+    assert verdict["verified"] == "unverified"
+    assert "expected parent" in verdict["disagreed"]
+
+
+def test_tag_verbs_render_a_verdict_not_two_lists(zotero, linker, cookjohn):
+    """`_tag_op` always re-read the tags -- it just handed back before/after and left the
+    caller to diff them. A read-back without a conclusion is not a verification."""
+    zotero.add("ABCD2345", "A Paper", tags=["keep"])
+    kw = _kw(zotero, linker, cookjohn)
+
+    assert add_tags("ABCD2345", ["new"], **kw)["verification"]["verified"] is True
+    assert remove_tags("ABCD2345", ["new"], **kw)["verification"]["verified"] is True
+    assert set_tags("ABCD2345", ["only"], force=True, **kw)["verification"]["verified"] is True
+
+
+def test_an_add_tolerates_a_tag_another_plugin_wrote(zotero):
+    """`/unread` lands on every item created through this package, put there by a
+    reading-list plugin. Demanding an exact set would report every successful add as
+    broken, so extras are reported rather than failed."""
+    from zotero_core.write.verbs import _verify_tags
+
+    verdict = _verify_tags("add", was=["keep"], now=["keep", "new", "/unread"], requested=["new"])
+    assert verdict["verified"] is True
+    assert verdict["also_present"] == ["/unread"]
+
+
+def test_a_set_does_NOT_tolerate_a_survivor(zotero):
+    """set_tags REPLACES. An extra tag after a set means the replacement did not take --
+    the opposite conclusion from the same evidence after an add."""
+    from zotero_core.write.verbs import _verify_tags
+
+    verdict = _verify_tags("set", was=["old"], now=["only", "old"], requested=["only"])
+    assert verdict["verified"] == "unverified"
+    assert verdict["disagreed"] == ["old"]
+
+
+def test_a_remove_that_left_the_tag_behind_is_unverified(zotero):
+    from zotero_core.write.verbs import _verify_tags
+
+    verdict = _verify_tags("remove", was=["gone", "keep"], now=["gone", "keep"], requested=["gone"])
+    assert verdict["verified"] == "unverified"
+    assert verdict["disagreed"] == ["gone"]

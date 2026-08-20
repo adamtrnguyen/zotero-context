@@ -292,6 +292,73 @@ def create_item(
     return result
 
 
+def _verify_attachment(
+    store: ZoteroItemStore, attachment_key: str | None, parent_item_key: str, *, expect_file: bool
+) -> dict:
+    """Confirm the attachment exists, hangs off the right parent, and has a FILE.
+
+    The file check is the point. Every other verification here asks whether a row landed;
+    this asks whether the thing the row promises is actually on disk -- which is the
+    failure this library already has 31 live instances of: linked attachments pointing at
+    Calibre directories that were renamed, so the item looks like it has a PDF and opens
+    to an error. Nothing caught them at write time because nothing looked.
+
+    `expect_file=False` for a linked URL, which correctly has no file at all.
+
+    ⚠ `file_exists: None` means UNRESOLVABLE, not missing: a path stored relative to
+    Zotero's base directory cannot be resolved from sqlite, because that base lives in
+    prefs.js. Reported as `unresolved` rather than folded into either verdict -- calling
+    it a failure would flag most of this library's linked attachments as broken.
+    """
+    if not attachment_key:
+        return {
+            "verified": "unverified",
+            "note": "no attachment key came back, so there is nothing to read back",
+        }
+    states = store.item_states([attachment_key])
+    state = states.get(attachment_key)
+    if state is None or not state.exists:
+        return {
+            "verified": "unverified",
+            "read_mode": states.read_mode,
+            "note": (
+                "the attachment does not read back. If read_mode is immutable=1 this may "
+                "be a snapshot lagging the commit rather than a failed write"
+            ),
+        }
+
+    verdict: dict = {"verified": True, "read_mode": states.read_mode, "item_type": state.item_type}
+    if state.item_type != "attachment":
+        verdict["verified"] = "unverified"
+        verdict["disagreed"] = f"expected an attachment, found {state.item_type!r}"
+        return verdict
+    if state.parent_key != parent_item_key:
+        verdict["verified"] = "unverified"
+        verdict["disagreed"] = f"expected parent {parent_item_key!r}, found {state.parent_key!r}"
+        return verdict
+
+    info = store.attachment_info(attachment_key)
+    verdict["link_mode"] = info.get("link_mode")
+    verdict["path"] = info.get("path")
+    if not expect_file:
+        return verdict
+    if info.get("file_exists") is None:
+        verdict["file"] = "unresolved"
+        verdict["note"] = info.get(
+            "note", "the path could not be resolved from the database alone"
+        )
+    elif not info.get("file_exists"):
+        verdict["verified"] = "unverified"
+        verdict["file"] = "missing"
+        verdict["note"] = (
+            "the attachment row exists but its file does not — this is the shape of a "
+            "dangling link, which opens to an error in Zotero"
+        )
+    else:
+        verdict["file"] = "present"
+    return verdict
+
+
 def link_attachment(
     parent_item_key: str,
     path: str,
@@ -342,6 +409,9 @@ def link_attachment(
         attachment_key=reply.get('attachmentKey'),
         path=path,
         linker=reply,
+        verification=_verify_attachment(
+            session.store, reply.get("attachmentKey"), parent_item_key, expect_file=True
+        ),
         undo_call=f"trash_items(['{reply.get('attachmentKey')}'])",
         versions=info,
     )
@@ -395,6 +465,9 @@ def import_attachment(
         attachment_key=attachment_key,
         path=path,
         cookjohn=reply,
+        verification=_verify_attachment(
+            session.store, attachment_key, parent_item_key, expect_file=True
+        ),
         versions=info,
     )
 
@@ -715,6 +788,56 @@ def set_tags(
     )
 
 
+def _verify_tags(action: str, was, now, requested) -> dict:
+    """Turn the before/after pair into a VERDICT.
+
+    `_tag_op` has always re-read the tags -- it just handed back `tags_before` and
+    `tags_after` and left the caller to diff them, which is a read-back without a
+    conclusion. Every other verb here says whether it worked; these said "here are two
+    lists".
+
+    Expectation depends on the action, which is why this cannot be one generic set
+    comparison: add is a union, remove is a difference, set is a replacement.
+
+    ⚠ Tolerates EXTRA tags after an add or a remove, and reports them. Zotero plugins
+    write tags of their own -- `/unread` appears on every item created through this
+    package, added by a reading-list plugin -- so demanding an exact set would report
+    every successful add as broken. A `set` is different: it is a replacement and extras
+    there mean the replacement did not take.
+    """
+    was_s, now_s, want = set(was), set(now), set(requested)
+    if action == "add":
+        missing = sorted(want - now_s)
+        expected = was_s | want
+    elif action == "remove":
+        missing = sorted(now_s & want)          # these should be GONE
+        expected = was_s - want
+    else:                                        # set
+        missing = sorted(want - now_s)
+        expected = want
+
+    verdict: dict = {"verified": True}
+    if missing:
+        verdict["verified"] = "unverified"
+        verdict["disagreed"] = missing
+        verdict["note"] = (
+            "the tags read back do not reflect the request; the post-write read may be "
+            "an immutable snapshot lagging the commit, so check the item in Zotero"
+        )
+        return verdict
+
+    unexpected = sorted(now_s - expected)
+    if unexpected:
+        if action == "set":
+            verdict["verified"] = "unverified"
+            verdict["disagreed"] = unexpected
+            verdict["note"] = "set_tags REPLACES; these tags should not have survived"
+        else:
+            # Not a failure: another plugin's doing. `/unread` is the common one here.
+            verdict["also_present"] = unexpected
+    return verdict
+
+
 def _tag_op(
     action: str,
     item_key: str,
@@ -776,6 +899,7 @@ def _tag_op(
         item_key=item_key,
         tags_before=list(was),
         tags_after=list(now),
+        verification=_verify_tags(action, was, now, tags),
         cookjohn=reply,
         undo_manifest=manifest,
         undo_call=f'set_tags({item_key!r}, {list(was)!r}, force=True)',
