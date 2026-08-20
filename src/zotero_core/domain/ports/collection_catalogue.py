@@ -21,6 +21,19 @@ from typing import Any, Protocol, runtime_checkable
 class CollectionCatalogue(Protocol):
     """Read-only access to collections and their membership."""
 
+    #: Which library this adapter reads. The read facade offers every collection call
+    #: per-library and used to serve that by CONSTRUCTING a second store; asking the
+    #: current adapter for a sibling keeps that with the code that knows how.
+    library_id: int
+
+    def for_library(self, library_id: int) -> CollectionCatalogue: ...
+
     def tree(self) -> Any: ...
 
-    def items(self, collection_key: str, *args, **kwargs) -> Any: ...
+    def items(self, collection_key: str, *, include_trashed: bool = False) -> Any: ...
+
+    def find(self, name: str) -> tuple[Any, ...]: ...
+
+    def collections_of(
+        self, item_keys: list[str] | tuple[str, ...]
+    ) -> dict[str, tuple[dict[str, str], ...]]: ...

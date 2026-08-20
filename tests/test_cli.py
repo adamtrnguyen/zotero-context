@@ -12,8 +12,8 @@ import argparse
 
 import pytest
 
-from zotero_core.infrastructure.service import ZoteroContext
 from zotero_core.interfaces import cli, read_mcp
+from zotero_core.interfaces.factory import build_context
 
 
 def _subcommands() -> set[str]:
@@ -38,7 +38,7 @@ def test_every_handler_has_a_subcommand():
 
 def test_unknown_command_raises():
     with pytest.raises(ValueError, match="Unknown command"):
-        cli.dispatch(ZoteroContext(), argparse.Namespace(command="nope"))
+        cli.dispatch(build_context(), argparse.Namespace(command="nope"))
 
 
 @pytest.mark.parametrize(
@@ -62,7 +62,7 @@ def test_duplicate_accepts_repeated_authors():
 
 
 def test_item_reads_the_catalogue(zotero):
-    ctx = ZoteroContext(zotero_db_path=zotero.path)
+    ctx = build_context(zotero_db_path=zotero.path)
     zotero.add("AAAA1111", title="A Paper", item_type="book")
     result = cli.dispatch(ctx, argparse.Namespace(command="item", item_key="AAAA1111"))
     assert result["item_type"] == "book"

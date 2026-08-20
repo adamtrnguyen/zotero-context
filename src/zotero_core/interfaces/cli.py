@@ -6,17 +6,23 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from zotero_core.application.services.context import ZoteroContext
 from zotero_core.domain.entities.models import to_jsonable
 from zotero_core.infrastructure.http.bbt import DEFAULT_BBT_RPC_URL
 from zotero_core.infrastructure.http.bridge import DEFAULT_BRIDGE_URL
-from zotero_core.infrastructure.service import ZoteroContext
 from zotero_core.infrastructure.sqlite.annotations import DEFAULT_ZOTERO_DB
+from zotero_core.interfaces.factory import build_context
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
-    ctx = ZoteroContext(
+    # Through the composition root, not by constructing the facade: `ZoteroContext` takes
+    # ports now, and deciding which real adapters those are is `factory`'s job. The three
+    # arguments a caller actually varies -- `--db`, `--bridge-url`, `--bbt-url` -- are
+    # unchanged, because they are the reason this CLI could always be pointed elsewhere and
+    # the MCP adapter could not.
+    ctx = build_context(
         bridge_url=args.bridge_url,
         zotero_db_path=args.db,
         bbt_rpc_url=args.bbt_url,

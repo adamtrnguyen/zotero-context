@@ -1,55 +1,76 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 from zotero_core.domain.entities.gui import ReaderContext, ReaderState, WindowState
 from zotero_core.domain.entities.models import Annotation, ZoteroSource
+from zotero_core.domain.ports.annotation_catalogue import AnnotationCatalogue
+from zotero_core.domain.ports.catalogue import Catalogue
+from zotero_core.domain.ports.citation_keys import CitationKeys
+from zotero_core.domain.ports.collection_catalogue import CollectionCatalogue
+from zotero_core.domain.ports.duplicates import DuplicateFinder
+from zotero_core.domain.ports.gui_bridge import GuiBridge
+from zotero_core.domain.ports.library_catalogue import LibraryCatalogue
+from zotero_core.domain.ports.search_catalogue import SearchCatalogue
 from zotero_core.domain.services.identity import is_key
-from zotero_core.infrastructure.http.bbt import DEFAULT_BBT_RPC_URL, BetterBibTeXClient
-from zotero_core.infrastructure.http.bridge import DEFAULT_BRIDGE_URL, ZoteroBridgeClient
-from zotero_core.infrastructure.sqlite.annotations import DEFAULT_ZOTERO_DB, ZoteroAnnotationStore
-from zotero_core.infrastructure.sqlite.collections import ZoteroCollectionStore
-from zotero_core.infrastructure.sqlite.duplicates import check_duplicate as _check_duplicate
-from zotero_core.infrastructure.sqlite.items import ZoteroItemStore
-from zotero_core.infrastructure.sqlite.libraries import list_libraries
-from zotero_core.infrastructure.sqlite.search import ZoteroSearchStore
 
 
 class ZoteroContext:
+    """The read facade: every read an agent or the CLI can ask for, in one object.
+
+    ⚠ THIS USED TO CONSTRUCT ITS OWN COLLABORATORS from a db path and two URLs --
+    `self.items = ZoteroItemStore(zotero_db_path)`, six times over -- which is the same
+    defect the write path had, in the layer that could least afford it: this class is what
+    BOTH the CLI and the MCP adapter wrap, so a caller could not point it anywhere without
+    an environment variable, and a test could not substitute anything at all.
+
+    It also lived in `infrastructure/`, below the layer it belongs to. It is a use case: it
+    composes seven collaborators and applies policy across them (which library to read,
+    whether a string is a key or a citekey, whether a duplicate blocks). None of that is a
+    driver detail.
+
+    Now every collaborator arrives as a port. `interfaces/factory.build_context()` is the
+    one place that decides which real adapters those are.
+    """
+
     def __init__(
         self,
         *,
-        bridge_url: str = DEFAULT_BRIDGE_URL,
-        zotero_db_path: str | Path = DEFAULT_ZOTERO_DB,
-        bbt_rpc_url: str = DEFAULT_BBT_RPC_URL,
+        bridge: GuiBridge,
+        annotations: AnnotationCatalogue,
+        bbt: CitationKeys,
+        items: Catalogue,
+        collections: CollectionCatalogue,
+        search: SearchCatalogue,
+        libraries: LibraryCatalogue,
+        duplicates: DuplicateFinder,
     ):
-        self.bridge = ZoteroBridgeClient(bridge_url)
-        self.annotations = ZoteroAnnotationStore(zotero_db_path)
-        self.bbt = BetterBibTeXClient(bbt_rpc_url)
-        # ⚠ ADDED 2026-08-19, and its absence was the whole problem. This class is what
-        # both the CLI and the MCP adapter wrap, so for as long as it held no item store,
-        # `items.py` (493 lines, 7 public methods) and `duplicates.py` were unreachable
-        # from every agent-facing surface -- and the gap got filled by a third-party
-        # plugin, which is exactly what this package exists to prevent.
-        self.items = ZoteroItemStore(zotero_db_path)
-        self.collections = ZoteroCollectionStore(zotero_db_path)
-        self.search = ZoteroSearchStore(zotero_db_path)
-        self._db_path = zotero_db_path
+        self.bridge = bridge
+        self.annotations = annotations
+        self.bbt = bbt
+        # ⚠ The item store's ABSENCE was once the whole problem. This class is what both
+        # the CLI and the MCP adapter wrap, so for as long as it held no item store,
+        # `items.py` and `duplicates.py` were unreachable from every agent-facing surface
+        # -- and the gap got filled by a third-party plugin, which is exactly what this
+        # package exists to prevent.
+        self.items = items
+        self.collections = collections
+        self.search = search
+        self.libraries = libraries
+        self.duplicates = duplicates
 
-    def _collections_for(self, library_id: int | None) -> ZoteroCollectionStore:
+    def _collections_for(self, library_id: int | None) -> CollectionCatalogue:
         """The default store, or a fresh one aimed at another library.
 
         Constructing one is cheap -- it holds paths and an int, opening nothing -- so
         this stays a per-call choice rather than server state.
         """
-        if library_id is None or library_id == self.collections.library_id:
+        if library_id is None:
             return self.collections
-        return ZoteroCollectionStore(self._db_path, library_id=library_id)
+        return self.collections.for_library(library_id)
 
-    def _search_for(self, library_id: int | None) -> ZoteroSearchStore:
-        if library_id is None or library_id == self.search.library_id:
+    def _search_for(self, library_id: int | None) -> SearchCatalogue:
+        if library_id is None:
             return self.search
-        return ZoteroSearchStore(self._db_path, library_id=library_id)
+        return self.search.for_library(library_id)
 
     def list_libraries(self) -> dict:
         """Every library with a live item count -- the user's, plus any groups.
@@ -58,7 +79,7 @@ class ZoteroContext:
         default is right and it is also invisible: without this, a caller cannot tell
         "you have nothing" from "you are looking in the wrong library".
         """
-        libraries, read_mode = list_libraries(self._db_path)
+        libraries, read_mode = self.libraries.list_libraries()
         return {
             "count": len(libraries),
             "read_mode": read_mode,
@@ -183,8 +204,7 @@ class ZoteroContext:
         was to attempt a create and read it out of the refusal, so "check before you
         add" cost a write attempt.
         """
-        return _check_duplicate(
-            self.items,
+        return self.duplicates.check(
             title=title,
             doi=doi,
             isbn=isbn,

@@ -24,13 +24,23 @@ Now there is one. Every default lives in this file; everything above takes ports
 
 from __future__ import annotations
 
+from pathlib import Path
+
+from zotero_core.application.services.context import ZoteroContext
 from zotero_core.application.services.session import WriteSession
+from zotero_core.infrastructure.http.bbt import DEFAULT_BBT_RPC_URL, BetterBibTeXClient
+from zotero_core.infrastructure.http.bridge import DEFAULT_BRIDGE_URL, ZoteroBridgeClient
 from zotero_core.infrastructure.journal import FileJournal
 from zotero_core.infrastructure.probe import HttpZoteroProbe
-from zotero_core.infrastructure.service import ZoteroContext
+from zotero_core.infrastructure.sqlite.annotations import (
+    DEFAULT_ZOTERO_DB,
+    ZoteroAnnotationStore,
+)
 from zotero_core.infrastructure.sqlite.collections import ZoteroCollectionStore
 from zotero_core.infrastructure.sqlite.duplicates import CatalogueDuplicateFinder
 from zotero_core.infrastructure.sqlite.items import ZoteroItemStore
+from zotero_core.infrastructure.sqlite.libraries import SqliteLibraryCatalogue
+from zotero_core.infrastructure.sqlite.search import ZoteroSearchStore
 from zotero_core.infrastructure.transports.cookjohn import CookjohnClient
 from zotero_core.infrastructure.transports.linker import LinkerClient
 
@@ -74,11 +84,37 @@ def build_write_session(
     )
 
 
-def build_context(**kwargs) -> ZoteroContext:
-    """The read facade, assembled. Kwargs go straight through to `ZoteroContext`.
+def build_context(
+    *,
+    bridge_url: str = DEFAULT_BRIDGE_URL,
+    zotero_db_path: str | Path = DEFAULT_ZOTERO_DB,
+    bbt_rpc_url: str = DEFAULT_BBT_RPC_URL,
+    **overrides,
+) -> ZoteroContext:
+    """Assemble the read facade, defaulting every port to its real adapter.
 
-    Thin today because `ZoteroContext` still constructs its own sqlite stores — it is the
-    read side's version of the same defect, and it is not yet ported. Routing its
-    construction through here first means the call sites are already correct when it is.
+    The three keyword arguments are the ones a CALLER actually varies -- point it at a copy
+    of the database, or at a bridge on another port -- and they are kept because the CLI's
+    `--db` and the MCP adapter's `ZOTERO_CORE_DB` both mean exactly this. `overrides` takes
+    a ready-made port by name, which is how a test substitutes one.
+
+    ⚠ Was a one-line passthrough while `ZoteroContext` built its own stores. That is the
+    defect this replaces: seven concrete adapters constructed inside an application-layer
+    facade, none of them replaceable.
+
+    Every store reads the SAME database. Handing them different paths would let a duplicate
+    check answer about one library while the existence gate read another.
     """
-    return ZoteroContext(**kwargs)
+    db = zotero_db_path
+    items = overrides.pop("items", None) or ZoteroItemStore(db)
+    collections = overrides.pop("collections", None) or ZoteroCollectionStore(db)
+    return ZoteroContext(
+        bridge=overrides.pop("bridge", None) or ZoteroBridgeClient(bridge_url),
+        annotations=overrides.pop("annotations", None) or ZoteroAnnotationStore(db),
+        bbt=overrides.pop("bbt", None) or BetterBibTeXClient(bbt_rpc_url),
+        items=items,
+        collections=collections,
+        search=overrides.pop("search", None) or ZoteroSearchStore(db),
+        libraries=overrides.pop("libraries", None) or SqliteLibraryCatalogue(db),
+        duplicates=overrides.pop("duplicates", None) or CatalogueDuplicateFinder(items),
+    )

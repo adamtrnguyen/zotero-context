@@ -37,6 +37,7 @@ which also keeps the CRUD surface a deliberate act rather than something a calle
 gets by accident.
 """
 
+from zotero_core.application.services.context import ZoteroContext
 from zotero_core.domain.entities.gui import (
     ReaderContext,
     ReaderPosition,
@@ -50,7 +51,6 @@ from zotero_core.domain.entities.models import Annotation, ZoteroSource
 from zotero_core.domain.services.identifiers import clean_doi, clean_isbn
 from zotero_core.infrastructure.http.bbt import DEFAULT_BBT_RPC_URL, BetterBibTeXClient
 from zotero_core.infrastructure.http.bridge import ZoteroBridgeClient
-from zotero_core.infrastructure.service import ZoteroContext
 from zotero_core.infrastructure.sqlite.annotations import DEFAULT_ZOTERO_DB, ZoteroAnnotationStore
 from zotero_core.infrastructure.sqlite.duplicates import check_duplicate
 from zotero_core.infrastructure.sqlite.items import (

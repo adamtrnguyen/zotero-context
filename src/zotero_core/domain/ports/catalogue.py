@@ -9,6 +9,13 @@ surface, which is larger and serves the read side too.
 Narrower than the class that implements it, on purpose. A port copied from an
 implementation is just the implementation with extra steps; this one states what the
 application actually depends on, so widening it is a visible decision.
+
+⚠ WIDENED 2026-08-20, and this is that visible decision. `pdf_attachments` and
+`trashed_count` are read by the READ facade, not by any write gate. They are here rather
+than in a second item port because two ports over one class, distinguished only by which
+consumer happens to call them, is bookkeeping rather than design — and because `omni-rag`
+already consumes `pdf_attachments` through this same store. Still eight methods against a
+class with more.
 """
 
 from __future__ import annotations
@@ -42,3 +49,9 @@ class Catalogue(Protocol):
     def attachment_info(
         self, attachment_key: str, *, base_path: str | Path | None = None
     ) -> dict: ...
+
+    def pdf_attachments(
+        self, limit: int | None = None, *, storage_dir: Path | None = None
+    ) -> Any: ...
+
+    def trashed_count(self) -> int: ...

@@ -44,7 +44,7 @@ def test_what_is_not_a_key(value, why):
 def test_the_read_layer_now_asks_the_same_question_as_the_write_layer():
     """The specific bug: a string could pass the read-side check, be treated as an item key
     rather than sent to Better BibTeX, and then be refused downstream as malformed."""
-    from zotero_core.infrastructure.service import _looks_like_item_key
+    from zotero_core.application.services.context import _looks_like_item_key
 
     for value in ("ＡＲＴＩＮＷＱＺ", "ⅠⅠⅠⅠⅠⅠⅠⅠ", "ABCDΕΦΓΗ"):
         assert _looks_like_item_key(value) == is_key(value) is False

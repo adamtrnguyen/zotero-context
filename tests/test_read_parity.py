@@ -120,22 +120,24 @@ def test_the_replacement_for_get_item_details_reports_a_real_item_type(zotero, m
     2026-08-19 against a live zotero.sqlite that reported `journalArticle` for the same
     keys. An agent reading an item to decide what to do next got a blank type.
     """
-    from zotero_core.infrastructure.service import ZoteroContext
+    from zotero_core.interfaces.factory import build_context
 
-    monkeypatch.setattr(read_mcp, "_CTX", ZoteroContext(zotero_db_path=zotero.path))
+    ctx = build_context(zotero_db_path=zotero.path)
     zotero.add("AAAA1111", title="A Paper", item_type="conferencePaper")
-    result = read_mcp.call_read("get_zotero_item", {"item_key": "AAAA1111"})
+    result = read_mcp.call_read("get_zotero_item", {"item_key": "AAAA1111"}, ctx=ctx)
     assert result["item_type"] == "conferencePaper"
 
 
 def test_search_parity_is_an_improvement_not_a_regression(zotero, monkeypatch):
     """`search_library` is cookjohn's substring search. The replacement is fuzzy, so it
     answers a query cookjohn returns nothing for."""
-    from zotero_core.infrastructure.service import ZoteroContext
+    from zotero_core.interfaces.factory import build_context
 
-    monkeypatch.setattr(read_mcp, "_CTX", ZoteroContext(zotero_db_path=zotero.path))
+    ctx = build_context(zotero_db_path=zotero.path)
     zotero.add("AAAA1111", title="Bayesian Learning via Stochastic Gradient Langevin Dynamics")
-    result = read_mcp.call_read("search_zotero_items", {"query": "Langevan Dynmaics"})
+    result = read_mcp.call_read(
+        "search_zotero_items", {"query": "Langevan Dynmaics"}, ctx=ctx
+    )
     assert result["count"] == 1
 
 
@@ -146,9 +148,9 @@ def test_group_libraries_are_reachable_rather_than_scoped_away(zotero, monkeypat
     this machine."""
     import sqlite3
 
-    from zotero_core.infrastructure.service import ZoteroContext
+    from zotero_core.interfaces.factory import build_context
 
-    monkeypatch.setattr(read_mcp, "_CTX", ZoteroContext(zotero_db_path=zotero.path))
+    ctx = build_context(zotero_db_path=zotero.path)
     con = sqlite3.connect(zotero.path)
     try:
         con.execute(
@@ -166,9 +168,9 @@ def test_group_libraries_are_reachable_rather_than_scoped_away(zotero, monkeypat
     finally:
         con.close()
 
-    result = read_mcp.call_read("list_zotero_libraries", {})
+    result = read_mcp.call_read("list_zotero_libraries", {}, ctx=ctx)
     listed = {lib["library_id"] for lib in result["libraries"]}
     assert 9 in listed
 
-    tree = read_mcp.call_read("get_zotero_collections", {"library_id": 9})
+    tree = read_mcp.call_read("get_zotero_collections", {"library_id": 9}, ctx=ctx)
     assert [c["name"] for c in tree["collections"]] == ["Group Work"]

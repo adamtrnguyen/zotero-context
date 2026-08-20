@@ -37,11 +37,12 @@ import os
 import sqlite3
 from typing import Any
 
+from zotero_core.application.services.context import ZoteroContext
 from zotero_core.domain.annotation_type import ANNOTATION_TYPE_NAMES
 from zotero_core.domain.entities.models import to_jsonable
 from zotero_core.infrastructure.http.bridge import ZoteroBridgeError
-from zotero_core.infrastructure.service import ZoteroContext
 from zotero_core.infrastructure.sqlite.connect import ZoteroReadError
+from zotero_core.interfaces.factory import build_context
 from zotero_core.interfaces.tool_spec import ToolSpec as _ToolSpec
 from zotero_core.interfaces.tool_spec import dispatch as _dispatch
 
@@ -50,28 +51,30 @@ SERVER_NAME = "zotero-context"
 # Derived from the domain enum, not transcribed. This was a hand-maintained tuple whose
 # own comment asked to be kept in step by hand -- a promise no comment can keep.
 
-_CTX: ZoteroContext | None = None
+def _context_from_env() -> ZoteroContext:
+    """The default context for a server nobody handed one to.
 
+    ⚠ THIS REPLACES A MODULE-GLOBAL SINGLETON. `_CTX` was built lazily on first use and
+    cached forever, which made it unreachable from a caller: the only way to point this
+    adapter anywhere was an environment variable, and the only way for a TEST to substitute
+    one was `monkeypatch.setattr(read_mcp, "_CTX", ...)` -- five sites did exactly that.
 
-def context() -> ZoteroContext:
-    """The shared context, built once, configurable by environment.
+    Building per call is not the waste it looks: a context holds paths, URLs and ints and
+    opens no connection, so there is nothing to cache. Every store opens its own connection
+    per query and always did.
 
-    ⚠ This used to be a bare `ZoteroContext()` constructed at server start, which
-    hard-wired `~/Zotero/zotero.sqlite` and the default bridge/BBT URLs. The CLI has
-    always accepted `--db`; MCP could not be pointed anywhere, so it could not be run
-    against a copy or a fixture.
+    The environment variables stay, because they are how the MCP registration points this at
+    a copy of the database, and they are read HERE rather than inside the facade -- reading
+    the environment is a deployment concern, which is what this layer is for.
     """
-    global _CTX
-    if _CTX is None:
-        kwargs: dict[str, Any] = {}
-        if db := os.environ.get("ZOTERO_CORE_DB"):
-            kwargs["zotero_db_path"] = db
-        if url := os.environ.get("ZOTERO_CORE_BRIDGE_URL"):
-            kwargs["bridge_url"] = url
-        if url := os.environ.get("ZOTERO_CORE_BBT_URL"):
-            kwargs["bbt_rpc_url"] = url
-        _CTX = ZoteroContext(**kwargs)
-    return _CTX
+    kwargs: dict[str, Any] = {}
+    if db := os.environ.get("ZOTERO_CORE_DB"):
+        kwargs["zotero_db_path"] = db
+    if url := os.environ.get("ZOTERO_CORE_BRIDGE_URL"):
+        kwargs["bridge_url"] = url
+    if url := os.environ.get("ZOTERO_CORE_BBT_URL"):
+        kwargs["bbt_rpc_url"] = url
+    return build_context(**kwargs)
 
 
 # --------------------------------------------------------------------------
@@ -79,16 +82,18 @@ def context() -> ZoteroContext:
 # --------------------------------------------------------------------------
 
 
-def get_zotero_window_state() -> Any:
-    return context().get_window_state()
+def get_zotero_window_state(*, ctx: ZoteroContext) -> Any:
+    return ctx.get_window_state()
 
 
 def get_zotero_active_reader(
     include_annotations: bool = False,
     annotation_types: Any = None,
     include_citekeys: bool = True,
+    *,
+    ctx: ZoteroContext,
 ) -> Any:
-    contexts = context().get_open_reader_context(
+    contexts = ctx.get_open_reader_context(
         active_only=True,
         include_annotations=include_annotations,
         include_citekeys=include_citekeys,
@@ -101,8 +106,10 @@ def get_zotero_open_readers(
     include_annotations: bool = False,
     annotation_types: Any = None,
     include_citekeys: bool = True,
+    *,
+    ctx: ZoteroContext,
 ) -> Any:
-    return context().get_open_reader_context(
+    return ctx.get_open_reader_context(
         include_annotations=include_annotations,
         include_citekeys=include_citekeys,
         annotation_types=parse_types(annotation_types),
@@ -114,8 +121,10 @@ def get_zotero_annotations(
     annotation_types: Any = None,
     include_text: bool = True,
     include_comments: bool = True,
+    *,
+    ctx: ZoteroContext,
 ) -> Any:
-    return context().get_annotations(
+    return ctx.get_annotations(
         attachment_key,
         types=parse_types(annotation_types),
         include_text=include_text,
@@ -123,23 +132,28 @@ def get_zotero_annotations(
     )
 
 
-def resolve_zotero_pdf(identifier: str, is_attachment_key: bool = False) -> dict:
-    parent_key, attachment_key = context().resolve_pdf_attachment_key(
+def resolve_zotero_pdf(
+    identifier: str,
+    is_attachment_key: bool = False,
+    *,
+    ctx: ZoteroContext,
+) -> dict:
+    parent_key, attachment_key = ctx.resolve_pdf_attachment_key(
         identifier, is_attachment_key=is_attachment_key
     )
     return {"parent_key": parent_key, "attachment_key": attachment_key}
 
 
-def get_zotero_sources(include_citekeys: bool = True) -> Any:
+def get_zotero_sources(include_citekeys: bool = True, *, ctx: ZoteroContext) -> Any:
     # `include_citekeys` was never passed by the old dispatch, so MCP always paid the
     # Better BibTeX round trip even when the caller did not want citekeys -- and BBT
     # being down is indistinguishable from no result, because its client swallows every
     # network error and returns None.
-    return context().get_sources_with_annotations(include_citekeys=include_citekeys)
+    return ctx.get_sources_with_annotations(include_citekeys=include_citekeys)
 
 
-def get_zotero_item(item_key: str) -> dict:
-    return context().get_item(item_key)
+def get_zotero_item(item_key: str, *, ctx: ZoteroContext) -> dict:
+    return ctx.get_item(item_key)
 
 
 def check_zotero_duplicate(
@@ -148,8 +162,10 @@ def check_zotero_duplicate(
     isbn: str | None = None,
     calibre_uuid: str | None = None,
     creators: Any = None,
+    *,
+    ctx: ZoteroContext,
 ) -> dict:
-    return context().check_duplicate(
+    return ctx.check_duplicate(
         title=title,
         doi=doi,
         isbn=isbn,
@@ -158,42 +174,56 @@ def check_zotero_duplicate(
     )
 
 
-def list_zotero_pdfs(limit: int | None = None) -> dict:
-    return context().list_pdfs(limit=limit)
+def list_zotero_pdfs(limit: int | None = None, *, ctx: ZoteroContext) -> dict:
+    return ctx.list_pdfs(limit=limit)
 
 
-def get_zotero_trash_count() -> dict:
-    return context().trash_count()
+def get_zotero_trash_count(*, ctx: ZoteroContext) -> dict:
+    return ctx.trash_count()
 
 
-def ping_zotero() -> dict:
+def ping_zotero(*, ctx: ZoteroContext) -> dict:
     # CLI-only until now, so an agent could not ask "is the bridge up?" -- it could only
     # infer it from the shape of a failure.
-    return context().ping()
+    return ctx.ping()
 
 
-def list_zotero_libraries() -> dict:
-    return context().list_libraries()
+def list_zotero_libraries(*, ctx: ZoteroContext) -> dict:
+    return ctx.list_libraries()
 
 
-def get_zotero_collections(library_id: int | None = None) -> dict:
-    return context().collection_tree(library_id=library_id)
+def get_zotero_collections(library_id: int | None = None, *, ctx: ZoteroContext) -> dict:
+    return ctx.collection_tree(library_id=library_id)
 
 
 def get_zotero_collection_items(
-    collection_key: str, include_trashed: bool = False, library_id: int | None = None
+    collection_key: str,
+    include_trashed: bool = False,
+    library_id: int | None = None,
+    *,
+    ctx: ZoteroContext,
 ) -> dict:
-    return context().collection_items(
+    return ctx.collection_items(
         collection_key, include_trashed=include_trashed, library_id=library_id
     )
 
 
-def get_zotero_item_collections(item_keys: Any, library_id: int | None = None) -> dict:
-    return context().item_collections(list(item_keys or ()), library_id=library_id)
+def get_zotero_item_collections(
+    item_keys: Any,
+    library_id: int | None = None,
+    *,
+    ctx: ZoteroContext,
+) -> dict:
+    return ctx.item_collections(list(item_keys or ()), library_id=library_id)
 
 
-def find_zotero_collections(name: str, library_id: int | None = None) -> dict:
-    return context().find_collections(name, library_id=library_id)
+def find_zotero_collections(
+    name: str,
+    library_id: int | None = None,
+    *,
+    ctx: ZoteroContext,
+) -> dict:
+    return ctx.find_collections(name, library_id=library_id)
 
 
 def search_zotero_items(
@@ -202,8 +232,10 @@ def search_zotero_items(
     limit: int = 25,
     item_type: str | None = None,
     library_id: int | None = None,
+    *,
+    ctx: ZoteroContext,
 ) -> dict:
-    return context().search_items(
+    return ctx.search_items(
         query, fuzzy=fuzzy, limit=limit, item_type=item_type, library_id=library_id
     )
 
@@ -213,18 +245,25 @@ def search_zotero_annotations(
     color: str | None = None,
     annotation_types: Any = None,
     limit: int = 25,
+    *,
+    ctx: ZoteroContext,
 ) -> dict:
-    return context().search_annotations(
+    return ctx.search_annotations(
         query, color=color, annotation_types=parse_types(annotation_types), limit=limit
     )
 
 
-def search_zotero_fulltext(query: str, limit: int = 25) -> dict:
-    return context().search_fulltext(query, limit=limit)
+def search_zotero_fulltext(query: str, limit: int = 25, *, ctx: ZoteroContext) -> dict:
+    return ctx.search_fulltext(query, limit=limit)
 
 
-def get_zotero_attachment_text(attachment_key: str, max_chars: int = 20000) -> dict:
-    return context().attachment_text(attachment_key, max_chars=max_chars)
+def get_zotero_attachment_text(
+    attachment_key: str,
+    max_chars: int = 20000,
+    *,
+    ctx: ZoteroContext,
+) -> dict:
+    return ctx.attachment_text(attachment_key, max_chars=max_chars)
 
 
 _ANNOTATION_TYPES_PROP = {
@@ -518,9 +557,19 @@ def error_code(exc: BaseException) -> str:
     return "error"
 
 
-def call_read(name: str, arguments: dict[str, Any]) -> Any:
-    """Dispatch one tool call. Thin by design -- the logic is shared, see `tool_spec`."""
-    return _dispatch(_BY_NAME, name, arguments)
+def call_read(
+    name: str, arguments: dict[str, Any], *, ctx: ZoteroContext | None = None
+) -> Any:
+    """Dispatch one tool call. Thin by design -- the logic is shared, see `tool_spec`.
+
+    `ctx` is the injection point this adapter lacked. Defaulting it here is correct in a way
+    the old module global was not: this is the composition root's own layer, the one place
+    allowed to name concrete adapters.
+    """
+    return _dispatch(
+        _BY_NAME, name, arguments,
+        extra={"ctx": ctx if ctx is not None else _context_from_env()},
+    )
 
 
 def parse_types(value: Any) -> set[str] | None:

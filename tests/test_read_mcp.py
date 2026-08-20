@@ -22,16 +22,26 @@ import pytest
 
 from zotero_core.domain.annotation_type import ANNOTATION_TYPE
 from zotero_core.infrastructure.http.bridge import ZoteroBridgeError
-from zotero_core.infrastructure.service import ZoteroContext
 from zotero_core.infrastructure.sqlite.connect import ZoteroReadError
 from zotero_core.interfaces import read_mcp
+from zotero_core.interfaces.factory import build_context
 
 
 @pytest.fixture()
-def wired(zotero, monkeypatch):
-    """Point the adapter's shared context at the throwaway database."""
-    ctx = ZoteroContext(zotero_db_path=zotero.path)
-    monkeypatch.setattr(read_mcp, "_CTX", ctx)
+def ctx(zotero):
+    """A read facade aimed at the throwaway database, assembled by the real factory.
+
+    ⚠ REPLACES `monkeypatch.setattr(read_mcp, "_CTX", ctx)`. The adapter kept its context in
+    a module global built lazily on first use, so pointing it anywhere meant rewriting that
+    global -- five sites did. `call_read` takes `ctx=` now, so the substitution is an
+    argument and a wrong one is a TypeError rather than a silent no-op.
+    """
+    return build_context(zotero_db_path=zotero.path)
+
+
+@pytest.fixture()
+def wired(zotero):
+    """The throwaway database itself, for tests that add rows to it."""
     return zotero
 
 
@@ -116,26 +126,30 @@ def test_the_annotation_type_vocabulary_is_discoverable():
 # --------------------------------------------------------------------------
 
 
-def test_unknown_tool_raises():
+def test_unknown_tool_raises(ctx):
     with pytest.raises(ValueError, match="Unknown tool"):
-        read_mcp.call_read("get_zotero_nothing", {})
+        read_mcp.call_read("get_zotero_nothing", {}, ctx=ctx)
 
 
-def test_an_undeclared_argument_is_refused_not_dropped():
+def test_an_undeclared_argument_is_refused_not_dropped(ctx):
     """The old dispatch read `arguments.get(...)` per branch, so a misspelling vanished
     and the caller silently got the default."""
     with pytest.raises(ValueError, match="does not accept"):
-        read_mcp.call_read("get_zotero_item", {"item_key": "AAAA1111", "include_annotaions": True})
+        read_mcp.call_read(
+            "get_zotero_item",
+            {"item_key": "AAAA1111", "include_annotaions": True},
+            ctx=ctx,
+        )
 
 
-def test_a_missing_required_argument_is_refused():
+def test_a_missing_required_argument_is_refused(ctx):
     with pytest.raises(ValueError, match="requires"):
-        read_mcp.call_read("get_zotero_item", {})
+        read_mcp.call_read("get_zotero_item", {}, ctx=ctx)
 
 
-def test_an_explicit_null_on_an_optional_argument_falls_back_to_the_verb_default(wired):
+def test_an_explicit_null_on_an_optional_argument_falls_back_to_the_verb_default(wired, ctx):
     wired.add("AAAA1111", title="A Paper")
-    result = read_mcp.call_read("list_zotero_pdfs", {"limit": None})
+    result = read_mcp.call_read("list_zotero_pdfs", {"limit": None}, ctx=ctx)
     assert result["count"] == 0
 
 
@@ -144,7 +158,7 @@ def test_an_explicit_null_on_an_optional_argument_falls_back_to_the_verb_default
 # --------------------------------------------------------------------------
 
 
-def test_get_zotero_item_reports_a_non_empty_item_type(wired):
+def test_get_zotero_item_reports_a_non_empty_item_type(wired, ctx):
     """REGRESSION GUARD for the tool this one replaces.
 
     cookjohn's `get_item_details` returns `itemType: ""` for EVERY item -- verified
@@ -152,13 +166,13 @@ def test_get_zotero_item_reports_a_non_empty_item_type(wired):
     keys. An agent reading an item to decide what to do next got a blank type.
     """
     wired.add("AAAA1111", title="A Paper", item_type="book")
-    result = read_mcp.call_read("get_zotero_item", {"item_key": "AAAA1111"})
+    result = read_mcp.call_read("get_zotero_item", {"item_key": "AAAA1111"}, ctx=ctx)
     assert result["ok"] is True
     assert result["item_type"] == "book"
     assert result["item_type"] != ""
 
 
-def test_get_zotero_item_returns_fields_creators_and_tags(wired):
+def test_get_zotero_item_returns_fields_creators_and_tags(wired, ctx):
     wired.add(
         "AAAA1111",
         title="A Paper",
@@ -166,13 +180,13 @@ def test_get_zotero_item_returns_fields_creators_and_tags(wired):
         tags=["read", "ml"],
         creators=[{"creatorType": "author", "firstName": "Max", "lastName": "Welling"}],
     )
-    result = read_mcp.call_read("get_zotero_item", {"item_key": "AAAA1111"})
+    result = read_mcp.call_read("get_zotero_item", {"item_key": "AAAA1111"}, ctx=ctx)
     assert result["fields"]["DOI"] == "10.1/xyz"
     assert result["tags"] == ["ml", "read"]
     assert result["creators"][0]["lastName"] == "Welling"
 
 
-def test_get_zotero_item_creators_keep_their_order(wired):
+def test_get_zotero_item_creators_keep_their_order(wired, ctx):
     """Author order is meaning, not presentation -- first author drives the dedupe tier."""
     wired.add(
         "AAAA1111",
@@ -182,24 +196,24 @@ def test_get_zotero_item_creators_keep_their_order(wired):
             {"creatorType": "author", "lastName": "Third"},
         ],
     )
-    result = read_mcp.call_read("get_zotero_item", {"item_key": "AAAA1111"})
+    result = read_mcp.call_read("get_zotero_item", {"item_key": "AAAA1111"}, ctx=ctx)
     assert [c["lastName"] for c in result["creators"]] == ["First", "Second", "Third"]
 
 
-def test_get_zotero_item_on_a_missing_key_says_so_rather_than_raising(wired):
-    result = read_mcp.call_read("get_zotero_item", {"item_key": "NOPE0000"})
+def test_get_zotero_item_on_a_missing_key_says_so_rather_than_raising(wired, ctx):
+    result = read_mcp.call_read("get_zotero_item", {"item_key": "NOPE0000"}, ctx=ctx)
     assert result["ok"] is False
     assert result["error"] == "not_found"
 
 
-def test_get_zotero_item_reports_trash_state(wired):
+def test_get_zotero_item_reports_trash_state(wired, ctx):
     wired.add("AAAA1111")
     wired.trash("AAAA1111")
-    result = read_mcp.call_read("get_zotero_item", {"item_key": "AAAA1111"})
+    result = read_mcp.call_read("get_zotero_item", {"item_key": "AAAA1111"}, ctx=ctx)
     assert result["trashed"] is True
 
 
-def test_every_read_carries_the_mode_that_served_it(wired):
+def test_every_read_carries_the_mode_that_served_it(wired, ctx):
     """The honesty mechanism `items.py` was built around, finally visible from outside.
 
     Every agent-facing read used to go through `annotations._connect`, which is
@@ -207,11 +221,11 @@ def test_every_read_carries_the_mode_that_served_it(wired):
     indistinguishable to a caller.
     """
     wired.add("AAAA1111")
-    assert read_mcp.call_read("get_zotero_item", {"item_key": "AAAA1111"})["read_mode"]
-    assert read_mcp.call_read("list_zotero_pdfs", {})["read_mode"]
+    assert read_mcp.call_read("get_zotero_item", {"item_key": "AAAA1111"}, ctx=ctx)["read_mode"]
+    assert read_mcp.call_read("list_zotero_pdfs", {}, ctx=ctx)["read_mode"]
 
 
-def test_check_zotero_duplicate_answers_without_writing(wired):
+def test_check_zotero_duplicate_answers_without_writing(wired, ctx):
     """The verdict used to be reachable only by ATTEMPTING a create and reading the
     refusal, so "check before you add" cost a write attempt."""
     wired.add(
@@ -221,7 +235,7 @@ def test_check_zotero_duplicate_answers_without_writing(wired):
     )
     before = wired.store().item_states(["AAAA1111"])
 
-    ok = read_mcp.call_read("check_zotero_duplicate", {"title": "Something Absent"})
+    ok = read_mcp.call_read("check_zotero_duplicate", {"title": "Something Absent"}, ctx=ctx)
     assert ok["verdict"] == "ok"
 
     warn = read_mcp.call_read(
@@ -230,6 +244,7 @@ def test_check_zotero_duplicate_answers_without_writing(wired):
             "title": "bayesian   learning",  # normalisation: case and whitespace
             "creators": [{"creatorType": "author", "lastName": "Welling"}],
         },
+        ctx=ctx,
     )
     assert warn["verdict"] == "warn"
 
@@ -237,17 +252,19 @@ def test_check_zotero_duplicate_answers_without_writing(wired):
     assert wired.store().item_states(["AAAA1111"]).live == before.live
 
 
-def test_check_zotero_duplicate_blocks_on_doi(wired):
+def test_check_zotero_duplicate_blocks_on_doi(wired, ctx):
     wired.add("AAAA1111", fields={"DOI": "10.1/xyz"})
-    result = read_mcp.call_read("check_zotero_duplicate", {"doi": "https://doi.org/10.1/xyz"})
+    result = read_mcp.call_read(
+        "check_zotero_duplicate", {"doi": "https://doi.org/10.1/xyz"}, ctx=ctx
+    )
     assert result["verdict"] == "block"
 
 
-def test_get_zotero_trash_count(wired):
+def test_get_zotero_trash_count(wired, ctx):
     wired.add("AAAA1111")
     wired.add("BBBB2222")
     wired.trash("BBBB2222")
-    assert read_mcp.call_read("get_zotero_trash_count", {})["trashed"] == 1
+    assert read_mcp.call_read("get_zotero_trash_count", {}, ctx=ctx)["trashed"] == 1
 
 
 # --------------------------------------------------------------------------
@@ -341,9 +358,8 @@ def test_the_adapter_imports_without_the_mcp_extra():
 def test_the_context_is_configurable_by_environment(monkeypatch, tmp_path):
     """MCP used to hard-wire ~/Zotero/zotero.sqlite -- the CLI had --db, MCP had nothing,
     so it could not be pointed at a copy or a fixture."""
-    monkeypatch.setattr(read_mcp, "_CTX", None)
     monkeypatch.setenv("ZOTERO_CORE_DB", str(tmp_path / "elsewhere.sqlite"))
-    ctx = read_mcp.context()
+    ctx = read_mcp._context_from_env()
     assert str(tmp_path / "elsewhere.sqlite") in str(ctx.items.db_path)
 
 

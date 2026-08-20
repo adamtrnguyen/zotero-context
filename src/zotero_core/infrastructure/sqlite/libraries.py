@@ -69,3 +69,24 @@ def list_libraries(
         ),
         read_mode,
     )
+
+
+class SqliteLibraryCatalogue:
+    """Satisfies `domain.ports.library_catalogue.LibraryCatalogue`.
+
+    Wraps the module function above so there is something to inject; the function stays the
+    implementation and stays importable. Same shape as `FileJournal` over `write_manifest`,
+    and for the same reason: a module cannot be passed as an argument.
+    """
+
+    def __init__(
+        self,
+        db_path: str | Path | None = None,
+        *,
+        busy_timeout_ms: int = DEFAULT_BUSY_TIMEOUT_MS,
+    ):
+        self.db_path = db_path
+        self.busy_timeout_ms = busy_timeout_ms
+
+    def list_libraries(self) -> tuple[tuple[Library, ...], str]:
+        return list_libraries(self.db_path, busy_timeout_ms=self.busy_timeout_ms)
