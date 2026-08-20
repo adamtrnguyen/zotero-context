@@ -14,8 +14,11 @@ write to be possible — which makes the failure mode worse, not better: without
 stub the suite passes only while Zotero happens to be up, and the tests asserting a
 refusal would pass for the wrong reason.
 
-Tests that exercise the liveness gate itself request `zotero_down` or
-`cookjohn_down`, which opt out.
+Tests that exercise the liveness gate itself request `zotero_down`, which opts out.
+⚠ This used to also name `cookjohn_down`. No such fixture has ever existed -- a reader
+looking for the cookjohn equivalent would find nothing and could not tell whether it was
+missing or misnamed. The cookjohn-side failures are driven by `Exploding`/`FakeCookjohn`
+passed through the session instead.
 
 WHY THE FAKES APPLY THEIR WRITES
 --------------------------------
@@ -735,19 +738,6 @@ def zotero_down(monkeypatch):
     monkeypatch.setattr("urllib.request.urlopen", _refused)
 
 
-@pytest.fixture()
-def zotero_up_plugin_missing(monkeypatch):
-    """Opt out: Zotero's own server answers, but the plugin path 404s."""
-    import io
-    import urllib.error
-
-    def _open(url, *_args, **_kwargs):
-        target = url if isinstance(url, str) else url.full_url
-        if target.rstrip("/").endswith("23119"):
-            raise urllib.error.HTTPError(target, 404, "Not Found", {}, io.BytesIO(b""))
-        raise urllib.error.HTTPError(target, 404, "Not Found", {}, io.BytesIO(b""))
-
-    monkeypatch.setattr("urllib.request.urlopen", _open)
 
 
 class StubProbe:

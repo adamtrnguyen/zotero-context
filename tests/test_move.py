@@ -51,7 +51,7 @@ def test_a_move_verifies_both_sides(zotero, session):
     }
 
 
-def test_a_move_writes_one_manifest_with_a_real_inverse(zotero, tmp_path, session):
+def test_a_move_writes_one_manifest_with_a_real_inverse(zotero, session):
     """The two-call route journalled only the removal, so the inverse it recorded put
     the item back in the source without taking it out of the target."""
     src, dst = _setup(zotero)

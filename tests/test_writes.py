@@ -118,6 +118,53 @@ def test_zotero_running_without_the_plugin_is_a_different_failure(monkeypatch):
     assert e.value.detail["http_status"] == 404
 
 
+def test_a_closed_zotero_is_reported_as_closed_not_as_a_missing_plugin(monkeypatch):
+    """THE BRANCH THE PROBE PORT EXISTS FOR, and it was never executed.
+
+    `require_zotero` catches a transport's refusal and then asks the probe whether the
+    APPLICATION is up, because the fix differs: install the plugin, or start Zotero. That
+    second question is `liveness.py`'s `not probe.is_running()`.
+
+    ⚠ Nothing exercised it. Every `StubProbe(...)` in the suite passed `running=True`, so
+    the condition was always False; mutating it to `probe.is_running()` left all 471 tests
+    green. The enriched `ZOTERO_NOT_RUNNING` refusal below — the one that names the probe
+    URL and says every write channel runs inside the application — could not be reached.
+
+    This test supplies the missing arm. It must FAIL if that `not` is dropped.
+    """
+    _stub_urlopen(monkeypatch, error=OSError("Connection refused"))
+    probe = StubProbe(running=False)
+
+    with pytest.raises(WriteBlocked) as e:
+        require_zotero(needs=("linker",), linker=LinkerClient(), probe=probe)
+
+    assert e.value.code == Reason.ZOTERO_NOT_RUNNING
+    # The enrichment is the point: a bare transport failure cannot say WHY.
+    assert "not running" in e.value.reason
+    assert e.value.detail["probe"] == probe.url
+    assert e.value.detail["needed"] == ["linker"]
+
+
+def test_a_running_zotero_keeps_the_transports_own_unenriched_refusal(monkeypatch):
+    """The other arm, pinning the branch from both sides.
+
+    ⚠ The two arms do NOT differ by code. `LinkerClient.ping()` already raises
+    `ZOTERO_NOT_RUNNING` for a refused connection, so both paths carry that code and an
+    assertion on it cannot tell them apart -- my first attempt at this test asserted
+    exactly that and failed. What the probe adds is the ENRICHMENT: a `probe` URL and a
+    `needed` list in `detail`, and a reason naming the application rather than the socket.
+
+    So the distinguishing fact is the absence of that enrichment when Zotero is up.
+    """
+    _stub_urlopen(monkeypatch, error=OSError("Connection refused"))
+
+    with pytest.raises(WriteBlocked) as e:
+        require_zotero(needs=("linker",), linker=LinkerClient(), probe=StubProbe(running=True))
+
+    # the transport's own refusal, re-raised untouched -- no probe was consulted for it
+    assert "probe" not in e.value.detail
+
+
 def test_something_else_answering_on_the_path_is_refused(monkeypatch):
     _stub_urlopen(monkeypatch, payload={"plugin": "some-other-plugin", "version": "9"})
     with pytest.raises(WriteBlocked) as e:
@@ -384,7 +431,7 @@ def test_the_manifest_records_the_prestate_and_the_inverse(zotero, tmp_path, ses
     }
 
 
-def test_a_manifest_written_with_no_journal_dir_honours_the_redirect(zotero, tmp_path, session):
+def test_a_manifest_written_with_no_journal_dir_honours_the_redirect(zotero, session):
     """Guards the seam the conftest fixture depends on.
 
     `journal_dir` resolves DEFAULT_JOURNAL_DIR at CALL time. As a default ARGUMENT it was
@@ -426,7 +473,7 @@ def test_the_database_copy_takes_the_journal_with_it(zotero, tmp_path, session):
     assert Path(out["database_backup"]["journal"]).exists()
 
 
-def test_the_database_copy_works_without_being_told_where_to_put_it(zotero, monkeypatch, session):
+def test_the_database_copy_works_without_being_told_where_to_put_it(zotero, session):
     """`copy_db=True` with no `journal_dir` — the documented way to ask for the snapshot —
     used to raise TypeError from `os.makedirs(None)`, AFTER the manifest was written and
     BEFORE the write was sent. Both tests above pass an explicit `journal_dir`, which is

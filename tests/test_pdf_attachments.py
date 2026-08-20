@@ -22,7 +22,7 @@ def _pdf(zotero, key: str, name: str = "paper.pdf") -> None:
     (d / name).write_bytes(b"%PDF-1.4\n")
 
 
-def test_title_comes_from_the_parent_and_the_collection_from_its_membership(zotero, tmp_path):
+def test_title_comes_from_the_parent_and_the_collection_from_its_membership(zotero):
     coll = zotero.add_collection("Data Val")
     zotero.add("PARENT01", title="A Practitioner's Guide to Agentic RL")
     zotero.add("ATTACH01", item_type="attachment", parent="PARENT01", stored=True, title="")
@@ -39,7 +39,7 @@ def test_title_comes_from_the_parent_and_the_collection_from_its_membership(zote
     assert a.path.name == "paper.pdf"
 
 
-def test_an_item_in_no_collection_reports_none_not_a_sentinel(zotero, tmp_path):
+def test_an_item_in_no_collection_reports_none_not_a_sentinel(zotero):
     """core returns the raw fact. Mapping "no collection" onto a magic string is the consumer's
     policy — omni-rag slugs it to `zotero` — and a read layer inventing it would make a real
     collection named "Zotero" indistinguishable from an uncollected item."""
@@ -51,7 +51,7 @@ def test_an_item_in_no_collection_reports_none_not_a_sentinel(zotero, tmp_path):
     assert a.collection is None
 
 
-def test_a_trashed_attachment_is_not_enumerated(zotero, tmp_path):
+def test_a_trashed_attachment_is_not_enumerated(zotero):
     zotero.add("PARENT03", title="Deleted Attachment's Parent")
     zotero.add("ATTACH03", item_type="attachment", parent="PARENT03", stored=True, title="")
     _pdf(zotero, "ATTACH03")
@@ -60,7 +60,7 @@ def test_a_trashed_attachment_is_not_enumerated(zotero, tmp_path):
     assert len(zotero.store().pdf_attachments()) == 0
 
 
-def test_a_linked_attachment_is_not_enumerated(zotero, tmp_path):
+def test_a_linked_attachment_is_not_enumerated(zotero):
     """Only `storage:` files are guaranteed to sit at <storage>/<KEY>/. A linked file lives
     wherever the user put it, so returning one would hand back a path that does not exist."""
     zotero.add("PARENT04", title="Linked Not Stored")
@@ -70,7 +70,7 @@ def test_a_linked_attachment_is_not_enumerated(zotero, tmp_path):
     assert len(zotero.store().pdf_attachments()) == 0
 
 
-def test_an_attachment_whose_folder_holds_no_pdf_is_skipped(zotero, tmp_path):
+def test_an_attachment_whose_folder_holds_no_pdf_is_skipped(zotero):
     """Skipped rather than returned with a non-existent path: a caller would only discover it
     when the parser failed, one stage later and with a worse error."""
     zotero.add("PARENT05", title="Row Without A File")
@@ -80,7 +80,7 @@ def test_an_attachment_whose_folder_holds_no_pdf_is_skipped(zotero, tmp_path):
     assert len(zotero.store().pdf_attachments()) == 0
 
 
-def test_a_missing_parent_title_falls_back_to_the_file_stem(zotero, tmp_path):
+def test_a_missing_parent_title_falls_back_to_the_file_stem(zotero):
     zotero.add("PARENT06", title="", item_type="journalArticle")
     zotero.add("ATTACH06", item_type="attachment", parent="PARENT06", stored=True, title="")
     _pdf(zotero, "ATTACH06", name="2310.03744v2.pdf")
@@ -89,7 +89,7 @@ def test_a_missing_parent_title_falls_back_to_the_file_stem(zotero, tmp_path):
     assert a.title == "2310.03744v2"
 
 
-def test_a_long_title_is_never_truncated(zotero, tmp_path):
+def test_a_long_title_is_never_truncated(zotero):
     """A truncated title silently merges distinct works under one label, which is the
     `book_collision` defect class in a consumer keying rows on the display string."""
     long = "Perceptual Organization " * 8
@@ -100,7 +100,7 @@ def test_a_long_title_is_never_truncated(zotero, tmp_path):
     assert zotero.store().pdf_attachments().items[0].title == long.strip()
 
 
-def test_another_library_is_not_enumerated_into_this_one(zotero, tmp_path):
+def test_another_library_is_not_enumerated_into_this_one(zotero):
     """Every read here is library-scoped; this database shape has group libraries too."""
     zotero.add("PARENT08", title="Group Paper", library_id=2)
     zotero.add("ATTACH08", item_type="attachment", parent="PARENT08", stored=True, title="",
@@ -110,7 +110,7 @@ def test_another_library_is_not_enumerated_into_this_one(zotero, tmp_path):
     assert len(zotero.store().pdf_attachments()) == 0
 
 
-def test_limit_bounds_the_enumeration(zotero, tmp_path):
+def test_limit_bounds_the_enumeration(zotero):
     for i in range(3):
         zotero.add(f"PARENT1{i}", title=f"Paper {i}")
         zotero.add(f"ATTACH1{i}", item_type="attachment", parent=f"PARENT1{i}", stored=True,
@@ -121,7 +121,7 @@ def test_limit_bounds_the_enumeration(zotero, tmp_path):
     assert len(zotero.store().pdf_attachments()) == 3
 
 
-def test_the_read_mode_travels_with_the_enumeration(zotero, tmp_path):
+def test_the_read_mode_travels_with_the_enumeration(zotero):
     """A short enumeration under `immutable=1` is a stale snapshot, not an emptied library — a
     caller diffing this against its own index would otherwise read it as a deletion."""
     zotero.add("PARENT20", title="Paper")

@@ -294,7 +294,7 @@ def test_trash_and_restore_round_trip_through_mcp(wired, linker, session):
 # dispatch
 # --------------------------------------------------------------------------
 
-def test_an_unknown_tool_is_named_in_the_error(wired, session):
+def test_an_unknown_tool_is_named_in_the_error(session):
     with pytest.raises(ValueError, match="Unknown tool: zotero_nope"):
         adapter.call_writes("zotero_nope", {}, session=session)
 
@@ -312,7 +312,7 @@ def test_an_undeclared_argument_is_refused_rather_than_dropped(wired, session):
         )
 
 
-def test_an_absent_required_argument_is_named(wired, session):
+def test_an_absent_required_argument_is_named(session):
     with pytest.raises(ValueError, match=r"requires \['item_keys'\]"):
         adapter.call_writes("zotero_trash_items", {}, session=session)
 
@@ -329,7 +329,7 @@ def test_an_explicit_null_on_an_optional_argument_falls_back_to_the_default(wire
     assert out["op"] == "write_note:create"
 
 
-def test_a_null_on_a_required_argument_reaches_the_verbs_coded_gate(wired, session):
+def test_a_null_on_a_required_argument_reaches_the_verbs_coded_gate(session):
     """Passed through on purpose: `WriteBlocked` with a code beats a ValueError from the
     adapter, because a code is what a caller can branch on."""
     with pytest.raises(WriteBlocked) as caught:
@@ -341,7 +341,7 @@ def test_a_null_on_a_required_argument_reaches_the_verbs_coded_gate(wired, sessi
 # preflight — read-only, and reports the two plugins separately
 # --------------------------------------------------------------------------
 
-def test_preflight_reports_each_transport_separately(wired, session):
+def test_preflight_reports_each_transport_separately(session):
     """"Zotero is up and one plugin is missing" is a different job to fix than "Zotero
     is closed", and it decides which verbs are available. `require_zotero` raises on the
     first failure, which is right for a write and wrong for a preflight."""
@@ -372,7 +372,7 @@ def test_preflight_resolves_keys_without_writing_anything(wired, session, linker
     assert cookjohn.calls == []
 
 
-def test_preflight_reports_an_unresolvable_key_as_data(wired, session):
+def test_preflight_reports_an_unresolvable_key_as_data(session):
     out = adapter.call_writes(
         "zotero_write_preflight", {"item_keys": ["NOSUCH12"]}, session=session
     )

@@ -200,7 +200,7 @@ def test_get_zotero_item_creators_keep_their_order(wired, ctx):
     assert [c["lastName"] for c in result["creators"]] == ["First", "Second", "Third"]
 
 
-def test_get_zotero_item_on_a_missing_key_says_so_rather_than_raising(wired, ctx):
+def test_get_zotero_item_on_a_missing_key_says_so_rather_than_raising(ctx):
     result = read_mcp.call_read("get_zotero_item", {"item_key": "NOPE0000"}, ctx=ctx)
     assert result["ok"] is False
     assert result["error"] == "not_found"
@@ -286,7 +286,7 @@ def test_annotation_reads_go_through_the_one_opener_and_record_the_mode(zotero):
     assert store.last_read_mode in {"mode=ro", "immutable=1"}
 
 
-def test_the_annotation_error_alias_is_gone(zotero):
+def test_the_annotation_error_alias_is_gone():
     """WAS `test_the_annotation_error_name_still_resolves`, asserting the alias held.
 
     The alias is removed. It was not a harmless name: `_CODES` matched on it and read as

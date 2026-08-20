@@ -211,7 +211,7 @@ def test_each_verb_reports_which_transport_served_it(zotero, tmp_path, session):
 # CREATE
 # --------------------------------------------------------------------------
 
-def test_create_demands_a_title(zotero, cookjohn, session):
+def test_create_demands_a_title(cookjohn, session):
     """cookjohn will create a titleless item quite happily, and it is then
     near-unfindable in the GUI — the analogue of calibre-core's mandatory title rule."""
     with pytest.raises(WriteBlocked) as e:
@@ -317,7 +317,7 @@ def test_force_creates_through_a_block(zotero, session):
     assert out["duplicate_check"]["verdict"] == "block"
 
 
-def test_the_calibre_uuid_stamp_is_appended_not_assigned_over(zotero, cookjohn, session):
+def test_the_calibre_uuid_stamp_is_appended_not_assigned_over(cookjohn, session):
     """`extra` is free text carrying other people's conventions — Better BibTeX keeps
     its Citation Key there. Replacing the field to add one line would delete them."""
     out = create_item(
@@ -380,7 +380,7 @@ def test_create_can_file_the_new_item_into_a_collection(zotero, session):
 # attachments — link vs import is a lasting choice, so it is two verbs
 # --------------------------------------------------------------------------
 
-def test_a_relative_path_is_refused(zotero, linker, tmp_path, session):
+def test_a_relative_path_is_refused(zotero, linker, session):
     """Zotero resolves a relative path against its OWN working directory, so this
     produces an attachment pointing at nothing — and it fails silently, because linking
     never reads the file."""
@@ -768,7 +768,7 @@ def test_a_child_note_is_created_under_its_parent(zotero, session):
     assert out["undo_call"].startswith("trash_items(")
 
 
-def test_updating_a_note_requires_its_key(zotero, session):
+def test_updating_a_note_requires_its_key(session):
     with pytest.raises(WriteBlocked) as e:
         write_note("New body", action="update", **_kw(session))
     assert e.value.code == Reason.MISSING_REQUIRED_FIELD
@@ -782,7 +782,7 @@ def test_a_note_update_refuses_a_key_that_is_not_a_note(zotero, tmp_path, sessio
     assert e.value.code == Reason.WRONG_ITEM_TYPE
 
 
-def test_an_empty_note_is_refused(zotero, session):
+def test_an_empty_note_is_refused(session):
     with pytest.raises(WriteBlocked) as e:
         write_note("   ", parent_item_key=None, **_kw(session))
     assert e.value.code == Reason.MISSING_REQUIRED_FIELD
@@ -810,7 +810,7 @@ def test_the_sibling_name_check_is_case_insensitive(zotero, session):
     assert e.value.code == Reason.DUPLICATE_ITEM
 
 
-def test_a_collection_is_created_and_names_its_undo(zotero, session):
+def test_a_collection_is_created_and_names_its_undo(session):
     out = create_collection("Reading 2026", **_kw(session))
     assert out["ok"] is True
     assert out["undo_call"].startswith("delete_collection(")
@@ -867,7 +867,7 @@ def test_a_collection_deletion_records_enough_to_rebuild_it(session,
     assert "create_collection" in manifest["inverse"]
 
 
-def test_an_unknown_collection_key_is_refused(zotero, tmp_path, session):
+def test_an_unknown_collection_key_is_refused(tmp_path, session):
     with pytest.raises(WriteBlocked) as e:
         delete_collection("NOTHERE2", journal_dir=str(tmp_path / "j"),
                           **_kw(session))
@@ -923,7 +923,7 @@ def test_a_rename_journals_the_previous_name(zotero, tmp_path, session):
 # the fixture's own faithfulness
 # --------------------------------------------------------------------------
 
-def test_the_fake_cookjohn_mimics_the_real_shape_inconsistency(zotero, session):
+def test_the_fake_cookjohn_mimics_the_real_shape_inconsistency(session):
     """`write_item` answers with a nested `data.itemKey`, `create_collection` with a flat
     `key`. That inconsistency is why `_find_key` exists, and a fake that answered
     uniformly would let a `_find_key` regression pass."""
@@ -1021,7 +1021,7 @@ def test_delete_verification_reports_unverified_rather_than_failed(zotero, sessi
     assert "snapshot" in verdict["note"]
 
 
-def test_create_collection_reads_the_collection_back(zotero, session):
+def test_create_collection_reads_the_collection_back(session):
     out = create_collection("Fresh", **_kw(session))
     assert out["verification"]["verified"] is True
     assert out["verification"]["path"] == "Fresh"
@@ -1166,7 +1166,7 @@ def test_tag_verbs_render_a_verdict_not_two_lists(zotero, session):
     assert set_tags("ABCD2345", ["only"], force=True, **kw)["verification"]["verified"] is True
 
 
-def test_an_add_tolerates_a_tag_another_plugin_wrote(zotero):
+def test_an_add_tolerates_a_tag_another_plugin_wrote():
     """`/unread` lands on every item created through this package, put there by a
     reading-list plugin. Demanding an exact set would report every successful add as
     broken, so extras are reported rather than failed."""
@@ -1177,7 +1177,7 @@ def test_an_add_tolerates_a_tag_another_plugin_wrote(zotero):
     assert verdict["also_present"] == ["/unread"]
 
 
-def test_a_set_does_NOT_tolerate_a_survivor(zotero):
+def test_a_set_does_NOT_tolerate_a_survivor():
     """set_tags REPLACES. An extra tag after a set means the replacement did not take --
     the opposite conclusion from the same evidence after an add."""
     from zotero_core.application.services.verbs import _verify_tags
@@ -1187,7 +1187,7 @@ def test_a_set_does_NOT_tolerate_a_survivor(zotero):
     assert verdict["disagreed"] == ["old"]
 
 
-def test_a_remove_that_left_the_tag_behind_is_unverified(zotero):
+def test_a_remove_that_left_the_tag_behind_is_unverified():
     from zotero_core.application.services.verbs import _verify_tags
 
     verdict = _verify_tags("remove", was=["gone", "keep"], now=["gone", "keep"], requested=["gone"])

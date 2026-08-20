@@ -113,7 +113,7 @@ def test_the_gated_surface_does_things_cookjohn_cannot():
         assert extra not in COOKJOHN_WRITES.values()
 
 
-def test_the_replacement_for_get_item_details_reports_a_real_item_type(zotero, monkeypatch):
+def test_the_replacement_for_get_item_details_reports_a_real_item_type(zotero):
     """Parity here means BETTER, not merely equal.
 
     cookjohn's `get_item_details` returns `itemType: ""` for every item -- verified
@@ -128,7 +128,7 @@ def test_the_replacement_for_get_item_details_reports_a_real_item_type(zotero, m
     assert result["item_type"] == "conferencePaper"
 
 
-def test_search_parity_is_an_improvement_not_a_regression(zotero, monkeypatch):
+def test_search_parity_is_an_improvement_not_a_regression(zotero):
     """`search_library` is cookjohn's substring search. The replacement is fuzzy, so it
     answers a query cookjohn returns nothing for."""
     from zotero_core.interfaces.factory import build_context
@@ -141,7 +141,7 @@ def test_search_parity_is_an_improvement_not_a_regression(zotero, monkeypatch):
     assert result["count"] == 1
 
 
-def test_group_libraries_are_reachable_rather_than_scoped_away(zotero, monkeypatch):
+def test_group_libraries_are_reachable_rather_than_scoped_away(zotero):
     """`get_libraries`/`search_libraries` are cookjohn's group-library reads, and this
     package scopes to the user library by default. That default would be a capability
     LOSS if there were no way past it -- there are 109 items in four non-empty groups on
