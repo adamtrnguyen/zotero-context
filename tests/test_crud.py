@@ -913,3 +913,126 @@ def test_the_fake_cookjohn_mimics_the_real_shape_inconsistency(zotero, linker, c
     assert "data" in item["cookjohn"] and "itemKey" in item["cookjohn"]["data"]
     assert "key" in collection["cookjohn"]
     assert item["item_key"] and collection["collection_key"]
+
+
+# --------------------------------------------------------------------------
+# read-back verification -- the two most dangerous verbs
+# --------------------------------------------------------------------------
+
+
+def test_replace_creators_reads_the_creators_back(zotero, linker, cookjohn):
+    """The most destructive item verb, and it reported nothing but its own inputs."""
+    zotero.add(
+        "ABCD2345",
+        "A Paper",
+        creators=[{"creatorType": "author", "lastName": "Old"}],
+    )
+    out = replace_creators(
+        "ABCD2345",
+        [{"creatorType": "author", "firstName": "Max", "lastName": "Welling"}],
+        force=True,
+        **_kw(zotero, linker, cookjohn),
+    )
+    assert out["verification"]["verified"] is True
+    assert out["verification"]["creators_after"][0]["lastName"] == "Welling"
+
+
+def test_creator_verification_tolerates_absent_vs_empty_name_parts(zotero, linker, cookjohn):
+    """Writing only `lastName` gets `firstName: ""` back -- Zotero fills the other half.
+
+    A naive dict `==` calls that a failed write, which is the false-alarm class that
+    `_verify_fields`' docstring records hitting twice on real writes.
+    """
+    zotero.add("ABCD2345", "A Paper", creators=[{"creatorType": "author", "lastName": "Old"}])
+    out = replace_creators(
+        "ABCD2345",
+        [{"creatorType": "author", "lastName": "Welling"}],   # no firstName
+        force=True,
+        **_kw(zotero, linker, cookjohn),
+    )
+    assert out["verification"]["verified"] is True
+
+
+def test_creator_verification_notices_a_reordering(zotero, linker, cookjohn):
+    """Order is meaning: first-author order drives duplicate detection, so the same
+    creators in a different order is a real difference, not cosmetic."""
+    from zotero_core.write.verbs import _verify_creators
+
+    zotero.add("ABCD2345", "A Paper")
+    zotero.replace_creators(
+        "ABCD2345",
+        [
+            {"creatorType": "author", "lastName": "Second"},
+            {"creatorType": "author", "lastName": "First"},
+        ],
+    )
+    verdict = _verify_creators(
+        zotero.store(),
+        "ABCD2345",
+        [
+            {"creatorType": "author", "lastName": "First"},
+            {"creatorType": "author", "lastName": "Second"},
+        ],
+    )
+    assert verdict["verified"] == "unverified"
+    assert "DIFFERENT ORDER" in verdict["note"]
+
+
+def test_delete_collection_confirms_the_collection_is_gone(zotero, linker, cookjohn):
+    """The one verification that INVERTS: a hit is the failure, a miss is the success.
+
+    It also exposed a fixture gap -- FakeCookjohn reported success and left the row in
+    place, so nothing that re-read the tree could ever have passed.
+    """
+    key = zotero.add_collection("Doomed")
+    out = delete_collection(key, **_kw(zotero, linker, cookjohn))
+    assert out["verification"]["verified"] is True
+    assert out["verification"]["read_mode"]
+
+
+def test_delete_verification_reports_unverified_rather_than_failed(zotero, linker, cookjohn):
+    """A "still there" read is NOT proof the delete failed -- it may be an immutable
+    snapshot taken before the commit. Claiming failure would send the caller to rebuild
+    a collection that is already gone, under a NEW key, re-filing every member."""
+    from zotero_core.write.collections import _verify_gone
+
+    key = zotero.add_collection("Still Here")
+    verdict = _verify_gone(zotero.store(), key)
+    assert verdict["verified"] == "unverified"
+    assert "snapshot" in verdict["note"]
+
+
+def test_create_collection_reads_the_collection_back(zotero, linker, cookjohn):
+    out = create_collection("Fresh", **_kw(zotero, linker, cookjohn))
+    assert out["verification"]["verified"] is True
+    assert out["verification"]["path"] == "Fresh"
+
+
+def test_update_collection_verifies_the_new_name(zotero, linker, cookjohn):
+    key = zotero.add_collection("Before")
+    out = update_collection(key, name="After", **_kw(zotero, linker, cookjohn))
+    assert out["verification"]["verified"] is True
+
+
+def test_collection_verification_only_checks_what_was_set(zotero, linker, cookjohn):
+    """`name=None` means "do not check the name", not "expect no name" -- checking a
+    field the caller never set would invent a failure."""
+    from zotero_core.write.collections import _verify_collection
+
+    key = zotero.add_collection("Named")
+    assert _verify_collection(zotero.store(), key)["verified"] is True
+    assert _verify_collection(zotero.store(), key, name="Named")["verified"] is True
+    bad = _verify_collection(zotero.store(), key, name="Wrong")
+    assert bad["verified"] == "unverified"
+    assert bad["disagreed"]["name"] == {"expected": "Wrong", "found": "Named"}
+
+
+def test_write_note_verifies_type_and_parent_but_not_the_body(zotero, linker, cookjohn):
+    """PARTIAL on purpose, and the result says so: nothing in read/ reads a note body,
+    so this catches a missing note or a wrong parent and cannot catch wrong text."""
+    zotero.add("PARENT12", "The Parent", item_type="book")
+    out = write_note("<p>hi</p>", parent_item_key="PARENT12", **_kw(zotero, linker, cookjohn))
+    v = out["verification"]
+    assert v["verified"] is True
+    assert v["item_type"] == "note"
+    assert v["body_checked"] is False

@@ -550,6 +550,60 @@ def _verify_fields(
     return verdict
 
 
+def _creator_key(creator: dict) -> tuple:
+    """A creator reduced to what a comparison should care about.
+
+    Absent and empty are the SAME thing here. A caller writing
+    `{"creatorType": "author", "lastName": "Welling"}` gets back
+    `{"creatorType": "author", "firstName": "", "lastName": "Welling"}` -- Zotero fills
+    the missing half -- and a naive dict `==` calls that a failed write.
+
+    An organisation is single-field (`name`, fieldMode=1) and a person is two-field, so
+    both slots are carried rather than one being coerced into the other.
+    """
+    return (
+        (creator.get("creatorType") or "").strip(),
+        (creator.get("firstName") or "").strip(),
+        (creator.get("lastName") or "").strip(),
+        (creator.get("name") or "").strip(),
+    )
+
+
+def _verify_creators(store: ZoteroItemStore, item_key: str, written) -> dict:
+    """Re-read the creators and compare IN ORDER.
+
+    Order is meaning, not presentation: the first author drives the duplicate-detection
+    tier in `read/duplicates.py`, so a set comparison would pass a write that silently
+    reordered them and broke dedupe.
+
+    Tolerance follows `_verify_fields`' lesson -- strict equality there produced false
+    alarms twice on real writes, and reporting a good write as broken sends the caller to
+    check Zotero by hand for nothing. Here the tolerance is empty-vs-absent (see
+    `_creator_key`); anything beyond that is reported rather than forgiven.
+    """
+    after = store.item_creators(item_key)
+    expected = [_creator_key(c) for c in written]
+    actual = [_creator_key(c) for c in after]
+    if expected == actual:
+        return {"verified": True, "creators_after": list(after)}
+    verdict: dict = {
+        "verified": "unverified",
+        "creators_after": list(after),
+        "expected": [dict(c) for c in written],
+    }
+    if sorted(expected) == sorted(actual):
+        verdict["note"] = (
+            "the same creators came back in a DIFFERENT ORDER; first-author order drives "
+            "duplicate detection, so this is a real difference, not cosmetic"
+        )
+    else:
+        verdict["note"] = (
+            "the creators read back do not match what was written; the post-write read "
+            "may be an immutable snapshot lagging the commit, so check the item in Zotero"
+        )
+    return verdict
+
+
 def replace_creators(
     item_key: str,
     creators: list[dict[str, str]],
@@ -606,6 +660,7 @@ def replace_creators(
         creators_before=list(was),
         creators_written=list(creators),
         cookjohn=reply,
+        verification=_verify_creators(session.store, item_key, creators),
         undo_manifest=manifest,
         undo_call=f'replace_creators({item_key!r}, {list(was)!r}, force=True)',
         versions=info,
@@ -787,6 +842,54 @@ def _note_existing_checks(session, action, parent_item_key, note_key, journal_di
     )
 
 
+def _verify_note(
+    store: ZoteroItemStore, note_key: str | None, parent_item_key, action: str
+) -> dict:
+    """Confirm the note item exists, is a note, and hangs off the right parent.
+
+    ⚠ PARTIAL, and it says so rather than implying more. The note BODY is not checked,
+    because nothing in `read/` reads one -- note text lives in `itemNotes.note` and the
+    read layer has no accessor for it. So this catches "the note was not created" and
+    "it landed on the wrong parent", and cannot catch "the body is not what I sent".
+
+    That gap lines up with the one `journal.py` already documents: `write_note(action=
+    "update")` does not capture the previous body either, so an update is the one note
+    operation with neither a verification of its result nor an undo of its effect. Worth
+    knowing before trusting one.
+    """
+    if not note_key:
+        return {
+            "verified": "unverified",
+            "note": "cookjohn returned no note key, so there is nothing to read back",
+        }
+    states = store.item_states([note_key])
+    state = states.get(note_key)
+    if state is None or not state.exists:
+        return {
+            "verified": "unverified",
+            "read_mode": states.read_mode,
+            "note": (
+                "the note does not read back. If read_mode is immutable=1 this may be a "
+                "snapshot lagging the commit rather than a failed write"
+            ),
+        }
+    verdict: dict = {
+        "verified": True,
+        "read_mode": states.read_mode,
+        "item_type": state.item_type,
+        "body_checked": False,
+    }
+    if state.item_type != "note":
+        verdict["verified"] = "unverified"
+        verdict["disagreed"] = f"expected a note, found {state.item_type!r}"
+    elif action == "create" and parent_item_key and state.parent_key != parent_item_key:
+        verdict["verified"] = "unverified"
+        verdict["disagreed"] = (
+            f"expected parent {parent_item_key!r}, found {state.parent_key!r}"
+        )
+    return verdict
+
+
 def write_note(
     content: str,
     *,
@@ -829,6 +932,7 @@ def write_note(
         note_key=key,
         parent_item_key=parent_item_key,
         cookjohn=reply,
+        verification=_verify_note(session.store, key, parent_item_key, action),
         undo_manifest=manifest,
         undo_call=f"trash_items(['{key}'])" if action == 'create' and key else None,
         versions=info,

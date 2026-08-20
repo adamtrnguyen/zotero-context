@@ -332,6 +332,43 @@ class ZoteroBuilder:
         finally:
             con.close()
 
+    def rename_collection(self, collection_key: str, name=None, parent=None) -> None:
+        """Apply a rename / re-parent the way Zotero does."""
+        con = sqlite3.connect(self.path)
+        try:
+            cid = self.collections[collection_key]
+            if name is not None:
+                con.execute(
+                    "UPDATE collections SET collectionName = ? WHERE collectionID = ?",
+                    (name, cid),
+                )
+            if parent is not None:
+                con.execute(
+                    "UPDATE collections SET parentCollectionID = ? WHERE collectionID = ?",
+                    (self.collections[parent], cid),
+                )
+            con.commit()
+        finally:
+            con.close()
+
+    def delete_collection(self, collection_key: str) -> None:
+        """Remove the collection row and its memberships, the way Zotero does.
+
+        ⚠ `FakeCookjohn._delete_collection` used to return {"success": True} and leave
+        the row in place, so a verification that re-read the tree would always see the
+        collection still there. The same asymmetry as `_remove_items_from_collection`,
+        and found the same way: by adding a read-back and watching it fail.
+        """
+        con = sqlite3.connect(self.path)
+        try:
+            cid = self.collections[collection_key]
+            con.execute("DELETE FROM collectionItems WHERE collectionID = ?", (cid,))
+            con.execute("DELETE FROM collections WHERE collectionID = ?", (cid,))
+            con.commit()
+        finally:
+            con.close()
+        self.collections.pop(collection_key, None)
+
     def collection_members(self, collection_key: str) -> list[str]:
         con = sqlite3.connect(f"file:{self.path}?mode=ro", uri=True)
         try:
@@ -580,6 +617,16 @@ class FakeCookjohn(CookjohnClient):
         return {"success": True, "key": key, "name": arguments["name"]}
 
     def _update_collection(self, arguments: dict):
+        # ⚠ The THIRD fake found returning success while applying nothing, after
+        # `_remove_items_from_collection` and `_delete_collection`. Same root cause: the
+        # fake was written for verbs that did not read back, so a plausible envelope was
+        # all it ever had to produce. Adding verification to a verb is what exposes it.
+        if self.apply:
+            self.builder.rename_collection(
+                arguments["collectionKey"],
+                name=arguments.get("name"),
+                parent=arguments.get("parentCollection"),
+            )
         return {"success": True, "collectionKey": arguments["collectionKey"]}
 
     def _delete_collection(self, arguments: dict):
@@ -588,6 +635,8 @@ class FakeCookjohn(CookjohnClient):
         if self.apply and arguments.get("deleteItems"):
             for item_key in members:
                 self.builder.trash(item_key)
+        if self.apply:
+            self.builder.delete_collection(key)
         return {"success": True, "deleted": key, "itemsTrashed": len(members)
                 if arguments.get("deleteItems") else 0}
 

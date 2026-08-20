@@ -156,6 +156,7 @@ def create_collection(
         name=name,
         parent_collection=parent_collection,
         cookjohn=reply,
+        verification=_verify_collection(store, key, name=name, parent_key=parent_collection),
         undo_call=f'delete_collection({key!r})',
         versions=info,
     )
@@ -242,9 +243,75 @@ def update_collection(
         name=name,
         parent_collection=parent_collection,
         cookjohn=reply,
+        verification=_verify_collection(
+            store, collection_key, name=name, parent_key=parent_collection
+        ),
         undo_manifest=manifest,
         versions=info,
     )
+
+
+def _verify_collection(store, collection_key: str, *, name=None, parent_key=None) -> dict:
+    """Confirm a collection exists and, where given, carries the expected name/parent.
+
+    `name=None` means "do not check the name" rather than "expect no name" -- the same
+    distinction `results.ok` draws between an absent key and an explicit null, and for
+    the same reason: `update_collection` may rename, re-parent, or both, and checking a
+    field the caller never set would invent a failure.
+    """
+    from ..read.collections import ZoteroCollectionStore
+
+    reader = ZoteroCollectionStore(store.db_path, busy_timeout_ms=store.busy_timeout_ms)
+    tree = reader.tree()
+    node = next((n for n in tree.flat() if n.key == collection_key), None)
+    if node is None:
+        return {
+            "verified": "unverified",
+            "read_mode": tree.read_mode,
+            "note": (
+                "the collection does not read back. If read_mode is immutable=1 this may "
+                "be a snapshot lagging the commit rather than a failed write"
+            ),
+        }
+    disagreed = {}
+    if name is not None and node.name != name:
+        disagreed["name"] = {"expected": name, "found": node.name}
+    if parent_key is not None and node.parent_key != parent_key:
+        disagreed["parent_key"] = {"expected": parent_key, "found": node.parent_key}
+    if disagreed:
+        return {"verified": "unverified", "read_mode": tree.read_mode, "disagreed": disagreed}
+    return {"verified": True, "read_mode": tree.read_mode, "path": node.path}
+
+
+def _verify_gone(store, collection_key: str) -> dict:
+    """Confirm a collection is ABSENT. The one verification that inverts.
+
+    Every other read-back asks "is the thing I wrote there?"; this asks "is the thing I
+    removed gone?", so a hit is the failure and a miss is the success.
+
+    ⚠ A "still there" answer is NOT proof the delete failed. The read layer falls back to
+    an `immutable=1` snapshot when Zotero holds the write lock, and a snapshot taken
+    before the commit still shows the collection. Reported as `unverified` with the read
+    mode attached rather than as a failure -- claiming a successful delete failed sends
+    the caller to rebuild something that is already gone, which for a collection means
+    recreating it under a NEW key and re-filing every member.
+    """
+    from ..read.collections import ZoteroCollectionStore
+
+    reader = ZoteroCollectionStore(store.db_path, busy_timeout_ms=store.busy_timeout_ms)
+    tree = reader.tree()
+    still_there = any(node.key == collection_key for node in tree.flat())
+    if not still_there:
+        return {"verified": True, "read_mode": tree.read_mode}
+    return {
+        "verified": "unverified",
+        "read_mode": tree.read_mode,
+        "note": (
+            "the collection still reads as present. If read_mode is immutable=1 this may "
+            "be a snapshot taken before the commit rather than a failed delete — check "
+            "Zotero before rebuilding, because a rebuild creates a NEW key"
+        ),
+    }
 
 
 def delete_collection(
@@ -317,6 +384,7 @@ def delete_collection(
         members_at_deletion=members,
         items_trashed=bool(delete_items),
         cookjohn=reply,
+        verification=_verify_gone(store, collection_key),
         undo_manifest=manifest,
         versions=info,
     )
