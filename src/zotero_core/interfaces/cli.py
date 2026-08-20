@@ -9,6 +9,7 @@ from zotero_core.application.services.context import ZoteroContext
 from zotero_core.infrastructure.http.bbt import DEFAULT_BBT_RPC_URL
 from zotero_core.infrastructure.http.bridge import DEFAULT_BRIDGE_URL
 from zotero_core.infrastructure.sqlite.annotations import DEFAULT_ZOTERO_DB
+from zotero_core.interfaces.arguments import parse_types
 from zotero_core.interfaces.factory import build_context
 from zotero_core.interfaces.rendering import render_json
 
@@ -141,15 +142,16 @@ def add_annotation_filters(parser: argparse.ArgumentParser) -> None:
 
 
 def _reader(ctx: ZoteroContext, args: argparse.Namespace, *, active_only: bool) -> Any:
-    contexts = ctx.get_open_reader_context(
-        active_only=active_only,
-        include_annotations=args.include_annotations,
-        include_citekeys=not args.no_citekeys,
-        annotation_types=parse_types(args.annotation_types),
-    )
-    if not active_only:
-        return contexts
-    return contexts[0] if contexts else None
+    kwargs = {
+        "include_annotations": args.include_annotations,
+        "include_citekeys": not args.no_citekeys,
+        "annotation_types": parse_types(args.annotation_types),
+    }
+    if active_only:
+        # The `[0] if contexts else None` collapse lives on the facade now -- it was written
+        # out here AND in `read_mcp`, identically.
+        return ctx.get_active_reader_context(**kwargs)
+    return ctx.get_open_reader_context(active_only=False, **kwargs)
 
 
 def _resolve_pdf(ctx: ZoteroContext, args: argparse.Namespace) -> dict:
@@ -222,12 +224,6 @@ def dispatch(ctx: ZoteroContext, args: argparse.Namespace) -> Any:
     if handler is None:
         raise ValueError(f"Unknown command: {args.command}")
     return handler(ctx, args)
-
-
-def parse_types(value: str) -> set[str] | None:
-    if not value.strip():
-        return None
-    return {part.strip() for part in value.split(",") if part.strip()}
 
 
 def print_json(payload: Any, *, pretty: bool = False) -> None:

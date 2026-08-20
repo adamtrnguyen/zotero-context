@@ -40,6 +40,7 @@ from zotero_core.application.services.context import ZoteroContext
 from zotero_core.domain.annotation_type import ANNOTATION_TYPE_NAMES
 from zotero_core.infrastructure.http.bridge import ZoteroBridgeError
 from zotero_core.infrastructure.sqlite.connect import ZoteroReadError
+from zotero_core.interfaces.arguments import parse_types
 from zotero_core.interfaces.factory import build_context
 from zotero_core.interfaces.rendering import render_json
 from zotero_core.interfaces.tool_spec import ToolSpec as _ToolSpec
@@ -92,13 +93,11 @@ def get_zotero_active_reader(
     *,
     ctx: ZoteroContext,
 ) -> Any:
-    contexts = ctx.get_open_reader_context(
-        active_only=True,
+    return ctx.get_active_reader_context(
         include_annotations=include_annotations,
         include_citekeys=include_citekeys,
         annotation_types=parse_types(annotation_types),
     )
-    return contexts[0] if contexts else None
 
 
 def get_zotero_open_readers(
@@ -587,16 +586,6 @@ def call_read(
         _BY_NAME, name, arguments,
         extra={"ctx": ctx if ctx is not None else _context_from_env()},
     )
-
-
-def parse_types(value: Any) -> set[str] | None:
-    if not value:
-        return None
-    if isinstance(value, str):
-        return {part.strip() for part in value.split(",") if part.strip()}
-    if isinstance(value, list):
-        return {str(part) for part in value if str(part).strip()}
-    return None
 
 
 def run() -> None:

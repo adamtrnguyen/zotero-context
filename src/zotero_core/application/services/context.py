@@ -107,10 +107,38 @@ class ZoteroContext:
         return self.get_window_state().readers
 
     def get_active_reader(self) -> ReaderState | None:
+        """The reader on the active tab, as raw state -- no annotations, no citekeys.
+
+        The cheap question: WHICH document is in front of the user. `get_active_reader_context`
+        is the expensive one, which joins annotations onto it.
+        """
         for reader in self.get_open_readers():
             if reader.is_active_tab:
                 return reader
         return None
+
+    def get_active_reader_context(
+        self,
+        *,
+        include_annotations: bool = True,
+        include_citekeys: bool = True,
+        annotation_types: set[str] | None = None,
+    ) -> ReaderContext | None:
+        """The active reader with its annotations joined on, or None if nothing is open.
+
+        ⚠ THE `[0] if contexts else None` REDUCTION LIVED IN BOTH ADAPTERS. `read_mcp` and
+        `cli` each called `get_open_reader_context(active_only=True, ...)` and then took the
+        first element themselves -- the same three lines, free to drift, in the two places
+        least able to notice. "Active" is a fact about the library, not about a transport, so
+        the collapse belongs here.
+        """
+        contexts = self.get_open_reader_context(
+            active_only=True,
+            include_annotations=include_annotations,
+            include_citekeys=include_citekeys,
+            annotation_types=annotation_types,
+        )
+        return contexts[0] if contexts else None
 
     def get_annotations(
         self,
