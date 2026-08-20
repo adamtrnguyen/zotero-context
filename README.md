@@ -104,6 +104,14 @@ overwritten is journalled with the call that reverses it. Results are re-read.
 `restore_items` ships alongside. A test greps `dir()` for `purge|destroy|erase` to keep it
 that way.
 
+**Undo is real, not advisory.** Ten verbs journal the call that reverses them, and
+`zotero_list_undo` / `zotero_undo` read that journal — until 2026-08-19 nothing did, so
+`undo_call` was text you retyped by hand. Try `dry_run` first; an undo is itself a write.
+The inverse is **parsed, never `eval`'d**: the callee must be a known undo verb and every
+argument a literal, because the journal lives in `/tmp` where any process can write.
+Entries that genuinely cannot be reversed say why — a note update does not capture the
+previous body, and recreating a deleted collection gives it a new key.
+
 Full rationale, transport split and the incident that motivated the gates:
 [`docs/write-surface.md`](docs/write-surface.md).
 

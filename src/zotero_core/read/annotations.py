@@ -4,6 +4,7 @@ import sqlite3
 from pathlib import Path
 
 from ..domain.entities import Annotation, ZoteroSource
+from .connect import DEFAULT_BUSY_TIMEOUT_MS, ZoteroReadError, open_readonly
 
 DEFAULT_ZOTERO_DB = Path.home() / "Zotero" / "zotero.sqlite"
 
@@ -17,13 +18,21 @@ ANNOTATION_TYPE = {
 }
 
 
-class ZoteroAnnotationError(RuntimeError):
-    pass
+# Back-compat alias; the real definition (and the reason it moved) is in connect.py.
+ZoteroAnnotationError = ZoteroReadError
 
 
 class ZoteroAnnotationStore:
-    def __init__(self, db_path: str | Path = DEFAULT_ZOTERO_DB):
+    def __init__(
+        self,
+        db_path: str | Path = DEFAULT_ZOTERO_DB,
+        *,
+        busy_timeout_ms: int = DEFAULT_BUSY_TIMEOUT_MS,
+    ):
         self.db_path = Path(db_path).expanduser()
+        self.busy_timeout_ms = busy_timeout_ms
+        # Set on every _connect. "" until the first read.
+        self.last_read_mode: str = ""
 
     def get_annotations(
         self,
@@ -145,13 +154,21 @@ class ZoteroAnnotationStore:
         return row[0] if row else None
 
     def _connect(self) -> sqlite3.Connection:
-        if not self.db_path.exists():
-            raise ZoteroAnnotationError(f"Zotero database not found: {self.db_path}")
-        uri = f"file:{self.db_path}?immutable=1"
-        try:
-            return sqlite3.connect(uri, uri=True)
-        except sqlite3.Error as exc:
-            raise ZoteroAnnotationError(f"Could not open Zotero database read-only: {exc}") from exc
+        """Open through the ONE opener, and remember which mode answered.
+
+        ⚠ This used to hardcode `immutable=1` and probe nothing, which made it the only
+        sqlite reader in the package not going through `connect.open_readonly` -- while
+        `read/__init__.py` claimed every read reports the mode that served it. Two
+        consequences, both real: an annotation read could never be a live read even when
+        Zotero was closed and `mode=ro` would have succeeded, and a caller had no way to
+        learn it had been handed a point-in-time snapshot.
+
+        `last_read_mode` rather than a changed return type: these methods return plain
+        lists that several callers unpack positionally.
+        """
+        conn, mode = open_readonly(self.db_path, busy_timeout_ms=self.busy_timeout_ms)
+        self.last_read_mode = mode
+        return conn
 
     def _row_to_annotation(self, row: sqlite3.Row | tuple) -> Annotation:
         page_label = row[4] or ""

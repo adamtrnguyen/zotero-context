@@ -77,6 +77,7 @@ from .collections import (
 from .errors import ALL_REASONS, Reason, WriteBlocked
 from .journal import DEFAULT_JOURNAL_DIR, copy_database, write_manifest
 from .liveness import require_zotero, zotero_is_running
+from .replay import list_entries, undo
 from .transports.cookjohn import DEFAULT_COOKJOHN_URL, CookjohnClient
 from .transports.linker import DEFAULT_LINKER_URL, LinkerClient
 from .verbs import (
@@ -114,8 +115,11 @@ __all__ = [  # noqa: RUF022
     "trash_items", "restore_items", "delete_collection",
     # gates, exposed so a caller can pre-flight without writing
     "require_zotero", "zotero_is_running", "check_keys", "require_items",
-    # undo -- a manifest by default; the 329 MB database copy is opt-in
+    # undo -- a manifest by default; the 329 MB database copy is opt-in.
+    # `list_entries`/`undo` READ that journal, which nothing did until 2026-08-19:
+    # write_manifest had no counterpart and `undo_call` was text a human retyped.
     "write_manifest", "copy_database", "DEFAULT_JOURNAL_DIR",
+    "list_entries", "undo",
     # transports. Here for injection and debugging; no verb requires naming one.
     "LinkerClient", "CookjohnClient", "DEFAULT_LINKER_URL", "DEFAULT_COOKJOHN_URL",
 ]

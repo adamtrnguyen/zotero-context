@@ -377,12 +377,24 @@ def import_attachment(
     if title:
         arguments["title"] = title
     reply = session.cookjohn.call("write_item", arguments)
+    attachment_key = find_key(reply)
+    if not attachment_key:
+        # `create_item` raises exactly here for exactly this (COOKJOHN_RETURNED_NO_KEY);
+        # this verb used to put the None straight into its envelope beside "ok": True,
+        # so a caller got a success it could not act on and no way to tell whether the
+        # attachment had been created.
+        raise WriteBlocked(
+            Reason.COOKJOHN_RETURNED_NO_KEY,
+            "cookjohn accepted the import but returned no attachment key — the file may "
+            "or may not have been attached; check the parent item",
+            {"parent_item_key": parent_item_key, "path": path, "cookjohn": reply},
+        )
     return {
         "ok": True,
         "op": "import_attachment",
         "transport": "cookjohn",
         "parent_item_key": parent_item_key,
-        "attachment_key": find_key(reply),
+        "attachment_key": attachment_key,
         "path": path,
         "cookjohn": reply,
         "versions": info,

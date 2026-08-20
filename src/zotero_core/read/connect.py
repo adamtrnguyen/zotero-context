@@ -22,10 +22,25 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
-from .annotations import ZoteroAnnotationError
 
 # Zotero's own user library. Group libraries get their own ids; every query in this layer
 # is scoped, because an unscoped one silently mixes a group library into a personal count.
+class ZoteroReadError(RuntimeError):
+    """The database could not be opened read-only, or is not where we were told.
+
+    Defined HERE, in the module that raises it, rather than in `annotations.py` where it
+    used to live. That location was an accident of history and it inverted the
+    dependency: `connect` is the lowest read module and every other reader depends on
+    it, so importing an exception upward from `annotations` made a cycle the moment
+    `annotations` needed the shared opener.
+
+    `annotations.ZoteroAnnotationError` is kept as an alias -- the name is exported and
+    caught in several places, and it is not worth breaking. It was always a misnomer:
+    it is raised for "cannot open the database", which has nothing to do with
+    annotations.
+    """
+
+
 USER_LIBRARY_ID = 1
 
 DEFAULT_BUSY_TIMEOUT_MS = 5000
@@ -53,7 +68,7 @@ def open_readonly(
     """Open read-only, honest mode first. Returns the connection AND the mode that won."""
     path = Path(db_path)
     if not path.exists():
-        raise ZoteroAnnotationError(f"Zotero database not found: {path}")
+        raise ZoteroReadError(f"Zotero database not found: {path}")
     try:
         conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True, timeout=5.0)
         conn.execute(f"PRAGMA busy_timeout={int(PROBE_TIMEOUT_MS)}")
@@ -71,6 +86,6 @@ def open_readonly(
             conn.execute("SELECT 1 FROM items LIMIT 1").fetchone()
             return conn, "immutable=1"
         except sqlite3.Error as exc:
-            raise ZoteroAnnotationError(
+            raise ZoteroReadError(
                 f"Could not open Zotero database read-only: {exc}"
             ) from exc

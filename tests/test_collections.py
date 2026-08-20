@@ -261,9 +261,3 @@ def test_find_matches_case_insensitively_and_returns_the_path(zotero, store):
 def test_find_with_a_blank_needle_returns_nothing_rather_than_everything(zotero, store):
     zotero.add_collection("Anything")
     assert store.find("   ") == ()
-
-
-def test_collection_looks_one_up_by_key(zotero, store):
-    key = zotero.add_collection("Papers")
-    assert store.collection(key).name == "Papers"
-    assert store.collection("NOSUCH00") is None

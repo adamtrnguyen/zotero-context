@@ -213,12 +213,6 @@ class ZoteroCollectionStore:
             return ()
         return tuple(node for node in self.tree().flat() if needle in node.name.casefold())
 
-    def collection(self, collection_key: str) -> CollectionNode | None:
-        for node in self.tree().flat():
-            if node.key == collection_key:
-                return node
-        return None
-
     def items(self, collection_key: str, *, include_trashed: bool = False) -> CollectionMembers:
         """What is IN a collection. Direct members only -- subcollections are separate.
 

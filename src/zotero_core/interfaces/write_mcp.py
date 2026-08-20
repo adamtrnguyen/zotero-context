@@ -83,6 +83,8 @@ from ..write.collections import (
 )
 from ..write.errors import WriteBlocked
 from ..write.liveness import ZOTERO_SERVER_URL, zotero_is_running
+from ..write.replay import list_entries as _list_entries
+from ..write.replay import undo as _undo
 from ..write.transports.cookjohn import CookjohnClient
 from ..write.transports.linker import LinkerClient
 from ..write.verbs import (
@@ -155,6 +157,32 @@ class _ToolSpec:
             "properties": dict(self.properties),
             "required": list(self.required),
         }
+
+
+def list_undo(limit: int = 25) -> dict:
+    """The write journal, newest first, with why each entry can or cannot be replayed."""
+    entries = _list_entries(limit=limit)
+    return {
+        "ok": True,
+        "op": "list_undo",
+        "count": len(entries),
+        "replayable": sum(1 for e in entries if e.replayable),
+        "entries": [
+            {
+                "manifest": e.path,
+                "op": e.op,
+                "written_at": e.written_at,
+                "inverse": e.inverse,
+                "replayable": e.replayable,
+                "blocked_reason": e.blocked_reason,
+            }
+            for e in entries
+        ],
+    }
+
+
+def undo_write(manifest: str | None = None, dry_run: bool = False) -> dict:
+    return _undo(manifest, dry_run=dry_run)
 
 
 def preflight(item_keys: list[str] | None = None) -> dict:
@@ -520,6 +548,37 @@ TOOLS: tuple[_ToolSpec, ...] = (
         required=("collection_key",),
     ),
     # ---------------- read-only pre-flight ----------------
+    _ToolSpec(
+        name="zotero_list_undo",
+        verb=list_undo,
+        description=(
+            "The write journal, newest first. Ten verbs record the call that reverses "
+            "them; until now NOTHING read those manifests, so `undo_call` was advisory "
+            "text you retyped. Each entry says whether it can be replayed and, if not, "
+            "why -- some operations genuinely cannot express an inverse (a note update "
+            "does not capture the previous body; recreating a deleted collection gives "
+            "it a new key)."
+        ),
+        properties={"limit": {"type": "integer", "default": 25}},
+    ),
+    _ToolSpec(
+        name="zotero_undo",
+        verb=undo_write,
+        description=(
+            "Replay a journal manifest's inverse. Defaults to the most recent REPLAYABLE "
+            "entry. Use dry_run=true first: it resolves and validates the call and shows "
+            "what it would do without doing it, which matters because an undo is itself "
+            "a write and is journalled like any other. The inverse is parsed, never "
+            "eval'd -- the callee must be a known undo verb and every argument a literal."
+        ),
+        properties={
+            "manifest": {
+                "type": "string",
+                "description": "Manifest path or filename suffix. Omit for the latest.",
+            },
+            "dry_run": {"type": "boolean", "default": False},
+        },
+    ),
     _ToolSpec(
         name="zotero_write_preflight",
         verb=preflight,

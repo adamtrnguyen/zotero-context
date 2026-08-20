@@ -254,6 +254,30 @@ def test_get_zotero_trash_count(wired):
 # --------------------------------------------------------------------------
 
 
+def test_annotation_reads_go_through_the_one_opener_and_record_the_mode(zotero):
+    """REGRESSION. `ZoteroAnnotationStore` was the only sqlite reader in the package not
+    using `connect.open_readonly` -- it hardcoded `immutable=1` and probed nothing, while
+    `read/__init__.py` claimed every read reports the mode that served it. Two real
+    consequences: an annotation read could never be a live read even with Zotero closed,
+    and a caller could not tell it had been handed a snapshot."""
+    from zotero_core.read.annotations import ZoteroAnnotationStore
+
+    store = ZoteroAnnotationStore(zotero.path)
+    assert store.last_read_mode == ""
+    store.get_sources_with_annotations()
+    assert store.last_read_mode in {"mode=ro", "immutable=1"}
+
+
+def test_the_annotation_error_name_still_resolves(zotero):
+    """It moved to connect.py (it is raised for "cannot open the database", not for
+    anything about annotations) and is aliased, because the old name is caught in
+    several places."""
+    from zotero_core.read.annotations import ZoteroAnnotationError
+    from zotero_core.read.connect import ZoteroReadError
+
+    assert ZoteroAnnotationError is ZoteroReadError
+
+
 def test_failures_carry_a_code_a_caller_can_branch_on():
     """A locked database, a missing key and a closed Zotero used to be one string."""
     assert read_mcp.error_code(ZoteroBridgeError("down")) == "bridge_unreachable"
